@@ -70,8 +70,6 @@ class Google:
         >>> links = search.get_links(max_pages=5)
         """
 
-        self.pages = max_pages
-
         start_date = self.start_date
         end_date = self.end_date
 
@@ -99,7 +97,7 @@ class Google:
                 # check if there are more pages to fetch
                 next_page = soup.find("a", attrs={"id": "pnnext"})
                 if next_page and (not max_pages or page_count < max_pages):
-                    next_link = self.ROOT + next_page.get("href")
+                    next_link = Google.ROOT + next_page.get("href")
                     req = Request(next_link, headers=Google.HEADERS)
                     page = urlopen(req).read()
                     soup = BeautifulSoup(page, "lxml")
