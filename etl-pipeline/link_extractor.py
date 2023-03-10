@@ -70,19 +70,20 @@ class Google:
         >>> links = search.get_links(max_pages=5)
         """
 
-        start_date = self.start_date
-        end_date = self.end_date
-
-        if start_date and end_date:
-            date_range = f"&tbs=cdr:1,cd_min:{start_date},cd_max:{end_date}"
+        # adding date query parameters
+        if self.start_date and self.nd_date:
+            date_range = f"&tbs=cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
         else:
             date_range = ""
 
+        # define full search url
         search = f"{Google.ROOT}search?q={self.company}&hl=en&source=lnms&tbm=nws&sa=X&ved=2ahUKEwjev5P_wqT9AhUZ7qQKHed-CvsQ_AUoAXoECAEQAw&biw=1245&bih=1046&dpr=2{date_range}"
 
+        # 
         links = []
         page_count = 0
 
+        # create session and extract links from different pages
         with Session() as session:
             req = Request(search, headers=Google.HEADERS)
             page = urlopen(req).read()
@@ -90,9 +91,12 @@ class Google:
 
             while True:
                 time.sleep(0.5)
-                for item in soup.find_all("a", attrs={"class": "WlydOe"}):
-                    link = item["href"]
-                    links.append(link)
+                
+                # extract HTML anchors in the page
+                anchors = soup.find_all("#search a")
+                
+                # append each of the "href" to the links 
+                links.extend([a["href"] for a in anchors])
 
                 # check if there are more pages to fetch
                 next_page = soup.find("a", attrs={"id": "pnnext"})
@@ -102,6 +106,7 @@ class Google:
                     page = urlopen(req).read()
                     soup = BeautifulSoup(page, "lxml")
                     page_count += 1
+                
                 else:
                     break
 
