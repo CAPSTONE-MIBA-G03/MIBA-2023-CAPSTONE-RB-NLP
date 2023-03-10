@@ -79,7 +79,7 @@ class Google:
         # define full search url
         search = f"{Google.ROOT}search?q={self.company}&hl=en&source=lnms&tbm=nws&sa=X&ved=2ahUKEwjev5P_wqT9AhUZ7qQKHed-CvsQ_AUoAXoECAEQAw&biw=1245&bih=1046&dpr=2{date_range}"
 
-        # 
+        # define loop variables
         links = []
         page_count = 0
 
@@ -87,13 +87,13 @@ class Google:
         with Session() as session:
             req = Request(search, headers=Google.HEADERS)
             page = urlopen(req).read()
-            soup = BeautifulSoup(page, "lxml")
+            soup = BeautifulSoup(page, "html.parser")
 
             while True:
                 time.sleep(0.5)
                 
                 # extract HTML anchors in the page
-                anchors = soup.find_all("#search a")
+                anchors = soup.select("#search a")
                 
                 # append each of the "href" to the links 
                 links.extend([a["href"] for a in anchors])
@@ -104,7 +104,7 @@ class Google:
                     next_link = Google.ROOT + next_page.get("href")
                     req = Request(next_link, headers=Google.HEADERS)
                     page = urlopen(req).read()
-                    soup = BeautifulSoup(page, "lxml")
+                    soup = BeautifulSoup(page, "html.parser")
                     page_count += 1
                 
                 else:
