@@ -71,7 +71,7 @@ class Google:
         """
 
         # adding date query parameters
-        if self.start_date and self.nd_date:
+        if self.start_date and self.end_date:
             date_range = f"&tbs=cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
         else:
             date_range = ""
