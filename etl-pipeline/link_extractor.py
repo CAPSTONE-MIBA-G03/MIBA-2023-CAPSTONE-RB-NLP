@@ -44,11 +44,12 @@ class Google:
         # "Referer": "https://www.google.com/",
     }
 
-    def __init__(self, start_date=None, end_date=None, duration=None, company=None):
+    def __init__(self, start_date=None, end_date=None, duration=None, company=None, country="us"):
         self.start_date = start_date
         self.end_date = end_date
         self.duration = duration
         self.company = company
+        self.country = country
 
     def get_links(self, max_pages=None):
         """
@@ -77,7 +78,7 @@ class Google:
             date_range = ""
 
         # define full search url
-        search = f"{Google.ROOT}search?q={self.company}&hl=en&source=lnms&tbm=nws&sa=X&ved=2ahUKEwjev5P_wqT9AhUZ7qQKHed-CvsQ_AUoAXoECAEQAw&biw=1245&bih=1046&dpr=2{date_range}"
+        search = f"{Google.ROOT}search?q={self.company}&hl=en&source=lnms&tbm=nws&gl={self.country}&sa=X&ved=2ahUKEwjev5P_wqT9AhUZ7qQKHed-CvsQ_AUoAXoECAEQAw&biw=1245&bih=1046&dpr=2{date_range}"
 
         # define loop variables
         links = []
@@ -121,4 +122,4 @@ class Google:
 # - ATM for testing a bit excessive use of "self." - should simplify
 # - Make request session more robust by adding cookies, headers etc. Also, there is a way to make google think
 #   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
-# - Spanish results??? Way around it?
+# - Spanish results??? Way around it? DONE
