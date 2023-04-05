@@ -63,3 +63,6 @@ def get_content(links: list):
             print(error, "\n")
 
     return article_data
+
+# TODO
+# Make this a method of the Search Engine classes? Might make sense
