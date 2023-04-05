@@ -1,14 +1,19 @@
 # Imports
 import asyncio
+import hashlib
+import random
+import re
 import time
-from datetime import date
 from urllib.request import Request, urlopen
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
-from playwright.sync_api import sync_playwright
+from fake_useragent import UserAgent
 from requests import Session
+from requests.utils import unquote
+
+ua = UserAgent(fallback="chrome")
+delay_range = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
 
 
 class Google:
@@ -32,13 +37,11 @@ class Google:
     Examples
     --------
     >>> from link_extractor import Google
-    >>> search = Google(company="Tesla")
+    >>> google = Google(company="Tesla")
     """
 
     ROOT = "https://www.google.com/"
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36"
-    }
+    USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 
     def __init__(
         self, start_date=None, end_date=None, duration=None, company=None, country="us"
@@ -51,7 +54,7 @@ class Google:
 
     def get_links(self, max_articles=None) -> pd.DataFrame:
         """
-        Extracts links from specified browser class and returns a dataframe object
+        Extracts links from specified search engine class and returns a dataframe object
 
         Parameters
         ----------
@@ -60,13 +63,13 @@ class Google:
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Browser" and "Link"
+        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
 
         Examples
         --------
         >>> from link_extractor import Google
-        >>> search = Google(company="Tesla")
-        >>> links = search.get_links(max_articles=50)
+        >>> google = Google(company="Tesla")
+        >>> links = google.get_links(max_articles=50)
         """
 
         # adding date query parameters
@@ -76,7 +79,7 @@ class Google:
             date_range = ""
 
         # define full search url
-        search = f"{Google.ROOT}search?q={self.company}&hl=en&source=lnms&tbm=nws&gl={self.country}&sa=X&ved=2ahUKEwjev5P_wqT9AhUZ7qQKHed-CvsQ_AUoAXoECAEQAw&biw=1245&bih=1046&dpr=2{date_range}"
+        search = f"{Google.ROOT}search?q={self.company}&hl=en&tbm=nws&gl={self.country}{date_range}"
 
         # define loop variables
         links = []
@@ -84,14 +87,13 @@ class Google:
 
         # create session and extract links from different pages
         with Session() as session:
-            req = Request(search, headers=Google.HEADERS)
+            req = Request(search, headers={"User-Agent": Google.USER_AGENT})
             page = urlopen(req).read()
             soup = BeautifulSoup(page, "lxml")
 
             while True:
-
                 # extract HTML anchors in the page
-                anchors = soup.select("#search a")
+                anchors = soup.find_all("a", {"class": "WlydOe"})
 
                 # append each of the "href" to the links
                 for a in anchors:
@@ -108,16 +110,16 @@ class Google:
                 # check if there are more pages to fetch
                 next_page = soup.find("a", attrs={"id": "pnnext"})
                 if next_page:
-                    next_link = Google.ROOT + next_page.get("href")
-                    req = Request(next_link, headers=Google.HEADERS)
+                    next_link = Google.ROOT + next_page["href"]
+                    req = Request(next_link, headers={"User-Agent": Google.USER_AGENT})
                     page = urlopen(req).read()
-                    soup = BeautifulSoup(page, "html.parser")
+                    soup = BeautifulSoup(page, "lxml")
                 else:
                     break
 
-                time.sleep(1.5)
+                time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame({"Browser": "Google", "Link": links})
+        fetched_links = pd.DataFrame({"Search Engine": "Google", "Link": links})
         return fetched_links
 
 
@@ -142,13 +144,10 @@ class Bing:
     Examples
     --------
     >>> from link_extractor import Bing
-    >>> search = Bing(company="Tesla")
+    >>> bing = Bing(company="Tesla")
     """
 
     ROOT = "https://www.bing.com/"
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36"
-    }
 
     def __init__(
         self, start_date=None, end_date=None, duration=None, company=None, country="us"
@@ -159,9 +158,9 @@ class Bing:
         self.company = company
         self.country = country
 
-    async def get_links(self, max_articles=None) -> pd.DataFrame:
+    def get_links(self, max_articles=None) -> pd.DataFrame:
         """
-        Extracts links from specified browser class and returns a dataframe object
+        Extracts links from specified search engine class and returns a dataframe object
 
         Parameters
         ----------
@@ -170,13 +169,13 @@ class Bing:
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Browser" and "Link"
+        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
 
         Examples
         --------
         >>> from link_extractor import Bing
-        >>> search = Bing(company="Tesla")
-        >>> links = await search.get_links(max_articles=50)
+        >>> bing = Bing(company="Tesla")
+        >>> links = bing.get_links(max_articles=50)
         """
 
         # adding date query parameters
@@ -185,54 +184,162 @@ class Bing:
         else:
             date_range = ""
 
+        # define loop variables
+        links = []
+        article_count = 0
+        num_results = 0
+
+        # scrape links from Bing news
+        prev_hash = None
+
+        while True:
+            
+            # define full search url
+            search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={self.company}&first={num_results}{date_range}" #specify lang parameter still todo
+
+            with Session() as session:
+                req = Request(search, headers={"User-Agent": ua.random})
+                page = urlopen(req).read()
+                soup = BeautifulSoup(page, "lxml")
+
+            # compute the hash of the current soup
+            soup_hash = hashlib.md5(soup.encode()).hexdigest()
+
+            # compare the hash of the current soup with the previous hash
+            if prev_hash and prev_hash == soup_hash:
+                break
+            
+            prev_hash = soup_hash
+
+            # Extract all the URLs of the news articles from the HTML response
+            for article in soup.find_all("div", {"class": "news-card"}):
+                links.append(article.get("url"))
+                article_count += 1
+
+                if max_articles and article_count >= max_articles:
+                    break
+
+            if max_articles and article_count >= max_articles:
+                break
+
+            if num_results == 200:
+                break
+
+            num_results += 10
+            time.sleep(random.uniform(*delay_range))
+
+        fetched_links = pd.DataFrame({"Search Engine": "Bing", "Link": links})
+        return fetched_links
+
+
+class Yahoo:
+    """
+    A Class aimed at extracting relevant news article links from Yahoo.
+
+    Parameters
+    ----------
+    start_date : {}, default=None
+        Specify a start date to be included in the Yahoo search
+
+    end_date : {}, default=None
+        Specify a end date to be included in the Yahoo search
+
+    duration : {}, default=None
+        Specify a specific number of months back from today in the Yahoo search
+
+    company : {}, default=None
+        Specify a start date to be included in the Yahoo search
+
+    Examples
+    --------
+    >>> from link_extractor import Yahoo
+    >>> yahoo = Yahoo(company="Tesla")
+    """
+
+    ROOT = "https://news.search.yahoo.com/"
+
+    def __init__(
+        self, start_date=None, end_date=None, duration=None, company=None, country="us"
+    ):
+        self.start_date = start_date
+        self.end_date = end_date
+        self.duration = duration
+        self.company = company
+        self.country = country
+
+    def get_links(self, max_articles=None) -> pd.DataFrame:
+        """
+        Extracts links from specified search engine class and returns a dataframe object
+
+        Parameters
+        ----------
+        max_articles : {}, default=None
+            Specify the maximum number of Yahoo articles to scrape. By default, scrapes all available.
+
+        Returns
+        -------
+        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
+
+        Examples
+        --------
+        >>> from link_extractor import Yahoo
+        >>> yahoo = Yahoo(company="Tesla")
+        >>> links = yahoo.get_links(max_articles=50)
+        """
+
+        # adding date query parameters
+        if self.start_date and self.end_date:
+            date_range = f"&tbs=cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}" #not updated yet!
+        else:
+            date_range = ""
+
         # define full search url
-        search = (
-            f"{Bing.ROOT}news/search?q={self.company}&cc={self.country}{date_range}"
-        )
+        search = f"{Yahoo.ROOT}search?p={self.company}&fr=news&country={self.country}{date_range}&lang=en-US"
 
         # define loop variables
         links = []
         article_count = 0
 
-        # Initiate playwright session and extract links from infinite scroll page
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(headless=True)
-            page = await browser.new_page()
-            page.set_default_timeout(10000)
-            await page.goto(search)
+        # create session and extract links from different pages
+        with Session() as session:
+            req = Request(search, headers={"User-Agent": ua.random})
+            page = urlopen(req).read()
+            soup = BeautifulSoup(page, "lxml")
 
-            # Get the main tag and initial a tags within it
-            main_tag = await page.query_selector("main")
-            last_count = 0
             while True:
-                # Get all "a" tags with class "title"
-                a_tags = await main_tag.query_selector_all("a.title")
+                # extract HTML anchors in the page
+                anchors = soup.find_all("ul", {"class": "compArticleList"})
 
-                # Scroll each "a" tag into view and print its href attribute
-                for tag in a_tags[last_count:]:
-                    await tag.scroll_into_view_if_needed()
-                    href = await tag.get_attribute("href")
-                    links.append(href)
+                # append each of the "href" to the links
+                for a in anchors:
+                    # First have to clean the links (yahoo provides them somewhat encoded)
+                    link = a.find("a")["href"]
+                    unquoted_link = unquote(link)
+                    cleaned_link = re.search(re.compile(r'RU=(.+)\/RK'),unquoted_link).group(1)
+                    links.append(cleaned_link)
                     article_count += 1
-
+                    # check if we have reached the desired number of articles
                     if max_articles and article_count >= max_articles:
                         break
 
+                # check if we have reached the desired number of articles
                 if max_articles and article_count >= max_articles:
                     break
 
-                # If no new "a" tags were loaded, stop scrolling
-                if len(a_tags) == last_count:
+                # check if there are more pages to fetch
+                next_page = soup.find("a", attrs={"class": "next"})
+                if next_page:
+                    next_link = next_page["href"]
+                    req = Request(next_link, headers={"User-Agent": ua.random})
+                    page = urlopen(req).read()
+                    soup = BeautifulSoup(page, "lxml")
+                else:
                     break
-                last_count = len(a_tags)
 
-                # Scroll to the bottom of the page to load more "a" tags
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(1.5)  # Wait for new tags to load
+                time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame({"Browser": "Bing", "Link": links})
+        fetched_links = pd.DataFrame({"Search Engine": "Yahoo", "Link": links})
         return fetched_links
-
 
 ### TODO ###
 
@@ -242,3 +349,4 @@ class Bing:
 # - Make request session more robust by adding cookies, headers etc. Also, there is a way to make google think
 #   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
 # - Spanish results??? Way around it? DONE
+# Google only takes actual actual UA. Fake ones not working. Work in Bing tho.

@@ -25,7 +25,8 @@ def get_content(links: list):
         
         try:
             config = Config()
-            config.browser_user_agent = ua.random
+            config.browser_user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+            config.memoize_articles = False
             config.request_timeout = 10
 
             article = Article(link, config=config)
