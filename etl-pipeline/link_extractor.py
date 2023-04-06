@@ -441,3 +441,4 @@ class Yahoo(SearchEngines):
 # - Spanish results??? Way around it? DONE
 # Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
 # WRITE TESTS / ADD LOGGING!!!
+# Try to filter by dates when getting the links themselves
