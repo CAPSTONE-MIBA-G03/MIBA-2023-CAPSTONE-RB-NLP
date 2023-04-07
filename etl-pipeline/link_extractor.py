@@ -1,10 +1,11 @@
 # Imports
 import hashlib
+import logging
 import random
 import re
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from urllib.request import Request, urlopen
 
 import pandas as pd
@@ -14,8 +15,17 @@ from requests import Session
 from requests.utils import unquote
 from tqdm import tqdm
 
+# Anti-Scraping Measures
 ua = UserAgent(fallback="chrome")
 delay_range = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
+
+# Logging Config
+link_extractor_logger = logging.getLogger("link_extractor")
+link_extractor_logger.setLevel(logging.DEBUG)
+
+link_extractor_handler = logging.FileHandler("logs/link_extractor.log")
+link_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+link_extractor_logger.addHandler(link_extractor_handler)
 
 
 class SearchEngines:
@@ -135,16 +145,20 @@ class Google(SearchEngines):
         search = f"{Google.ROOT}search?q={self.company}&hl=en&tbm=nws&gl={self.country}{date_range}"
 
         # define loop variables
-        links = []
-        titles = []
-        sources = []
+        results = []
         article_count = 0
 
         # create session and extract links from different pages
         with Session() as session:
             req = Request(search, headers={"User-Agent": Google.USER_AGENT})
-            page = urlopen(req).read()
-            soup = BeautifulSoup(page, "lxml")
+
+            link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}")
+
+            page = urlopen(req)
+
+            link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+
+            soup = BeautifulSoup(page.read(), "lxml")
 
             while True:
                 # extract HTML anchors in the page
@@ -153,9 +167,20 @@ class Google(SearchEngines):
 
                 # append each of the "href" to the links
                 for a in anchors:
-                    links.append(a["href"])
-                    titles.append(a.find("div", {"role": "heading"}).text)
-                    sources.append(a.find("span").text)  # Fix (not getting it always)
+                    link = a["href"]
+                    title = a.find("div", {"role": "heading"}).text
+                    source = a.find("span").text
+
+                    result = {
+                        "Search Engine": "Google",
+                        "Link": link,
+                        "Title": title,
+                        "Source": source,
+                    }
+
+                    results.append(result)
+
+                    link_extractor_logger.info(result)
 
                     article_count += 1
                     # check if we have reached the desired number of articles
@@ -171,21 +196,17 @@ class Google(SearchEngines):
                 if next_page:
                     next_link = Google.ROOT + next_page["href"]
                     req = Request(next_link, headers={"User-Agent": Google.USER_AGENT})
-                    page = urlopen(req).read()
-                    soup = BeautifulSoup(page, "lxml")
+                    page = urlopen(req)
+
+                    link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+
+                    soup = BeautifulSoup(page.read(), "lxml")
                 else:
                     break
 
                 time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame(
-            {
-                "Search Engine": "Google",
-                "Link": links,
-                "Title": titles,
-                "Source": sources,
-            }
-        )
+        fetched_links = pd.DataFrame(results)
         return fetched_links
 
 
@@ -245,9 +266,7 @@ class Bing(SearchEngines):
             date_range = ""
 
         # define loop variables
-        links = []
-        titles = []
-        sources = []
+        results = []
 
         article_count = 0
         num_results = 0
@@ -261,8 +280,14 @@ class Bing(SearchEngines):
 
             with Session() as session:
                 req = Request(search, headers={"User-Agent": ua.random})
-                page = urlopen(req).read()
-                soup = BeautifulSoup(page, "lxml")
+
+                link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}") # Might not be needed to have multiple different sessions
+
+                page = urlopen(req)
+
+                link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+
+                soup = BeautifulSoup(page.read(), "lxml")
 
             # compute the hash of the current soup
             soup_hash = hashlib.md5(soup.encode()).hexdigest()
@@ -275,9 +300,21 @@ class Bing(SearchEngines):
 
             # Extract all the URLs of the news articles from the HTML response
             for article in soup.find_all("div", "news-card"):
-                links.append(article["data-url"])
-                titles.append(article["data-title"])
-                sources.append(article["data-author"])
+
+                link = article["data-url"]
+                title = article["data-title"]
+                source = article["data-author"]
+
+                result = {
+                        "Search Engine": "Bing",
+                        "Link": link,
+                        "Title": title,
+                        "Source": source,
+                    }
+
+                results.append(result)
+
+                link_extractor_logger.info(result)
 
                 article_count += 1
 
@@ -287,20 +324,13 @@ class Bing(SearchEngines):
             if max_articles and article_count >= max_articles:
                 break
 
-            if num_results == 200:
+            if num_results == 200: # This not optimal, have to change
                 break
 
             num_results += 10
             time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame(
-            {
-                "Search Engine": "Bing",
-                "Link": links,
-                "Title": titles,
-                "Source": sources,
-            }
-        )
+        fetched_links = pd.DataFrame(results)
         return fetched_links
 
 
@@ -363,16 +393,20 @@ class Yahoo(SearchEngines):
         search = f"{Yahoo.ROOT}search?p={self.company}&fr=news&country={self.country}{date_range}&lang=en-US"
 
         # define loop variables
-        links = []
-        titles = []
-        sources = []
+        results = []
         article_count = 0
 
         # create session and extract links from different pages
         with Session() as session:
             req = Request(search, headers={"User-Agent": ua.random})
-            page = urlopen(req).read()
-            soup = BeautifulSoup(page, "lxml")
+
+            link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}")
+            
+            page = urlopen(req)
+
+            link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+
+            soup = BeautifulSoup(page.read(), "lxml")
 
             while True:
                 # extract HTML anchors in the page
@@ -381,22 +415,23 @@ class Yahoo(SearchEngines):
                 # append each of the "href" to the links
                 for a in anchors:
                     # First have to clean the links (yahoo provides them somewhat encoded)
-                    link = a.find("a")["href"]
-                    unquoted_link = unquote(link)
-                    cleaned_link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
-                    links.append(cleaned_link)
+                    messy_link = a.find("a")["href"]
+                    unquoted_link = unquote(messy_link)
 
-                    try:
-                        title = a.find("h4", "s-title").text
-                        titles.append(title)
-                    except:
-                        titles.append("None")
+                    link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
+                    title = a.find("h4", "s-title").text
+                    source = a.find("span", "s-source").text
 
-                    try:
-                        source = a.find("span", "s-source").text
-                        sources.append(source)
-                    except:
-                        sources.append("None")
+                    result = {
+                        "Search Engine": "Yahoo",
+                        "Link": link,
+                        "Title": title,
+                        "Source": source,
+                    }
+
+                    results.append(result)
+
+                    link_extractor_logger.info(result)
 
                     article_count += 1
 
@@ -413,21 +448,17 @@ class Yahoo(SearchEngines):
                 if next_page:
                     next_link = next_page["href"]
                     req = Request(next_link, headers={"User-Agent": ua.random})
-                    page = urlopen(req).read()
-                    soup = BeautifulSoup(page, "lxml")
+                    page = urlopen(req)
+
+                    link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+
+                    soup = BeautifulSoup(page.read(), "lxml")
                 else:
                     break
 
                 time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame(
-            {
-                "Search Engine": "Yahoo",
-                "Link": links,
-                "Title": titles,
-                "Source": sources,
-            }
-        )
+        fetched_links = pd.DataFrame(results)
         return fetched_links
 
 
