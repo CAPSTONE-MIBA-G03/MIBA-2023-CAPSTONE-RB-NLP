@@ -4,104 +4,71 @@ import logging
 import random
 import re
 import time
+import os
+import pandas as pd
+
+from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from urllib.request import Request, urlopen
-
-import pandas as pd
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests import Session
 from requests.utils import unquote
-from tqdm import tqdm
+
 
 # Anti-Scraping Measures
 ua = UserAgent(fallback="chrome")
 delay_range = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
 
 # Logging Config
-link_extractor_logger = logging.getLogger("link_extractor")
-link_extractor_logger.setLevel(logging.DEBUG)
+LOG_DIR = "logs"
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
 
-link_extractor_handler = logging.FileHandler("logs/link_extractor.log")
+LOGGER = logging.getLogger("link_extractor")
+LOGGER.setLevel(logging.DEBUG)
+
+link_extractor_handler = logging.FileHandler(os.path.join(LOG_DIR, "link_extractor.log"))
 link_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
-link_extractor_logger.addHandler(link_extractor_handler)
+
+LOGGER.addHandler(link_extractor_handler)
 
 
 class SearchEngines:
     """
-    A class aimed at extracting relevant news article links from multiple search engines.
+    A class aimed to provide a common interface for all the Search Engines (Google, Bing, etc.)
     """
 
-    def __init__(
-        self, start_date=None, end_date=None, duration=None, company=None, country="us"
-    ):
+    def __init__(self, start_date=None, end_date=None, duration=None, company=None, country="us"):
         self.start_date = start_date
         self.end_date = end_date
         self.duration = duration
         self.company = company
         self.country = country
 
+    @abstractmethod
     def get_links(self, max_articles=None, threads=1):
         """
-        Extracts links from specified search engine class and returns a dataframe object
+        An abstract method that gets links from the search engine.
+
+        This method should be implemented in child classes to provide search-specific functionality.
 
         Parameters
         ----------
         max_articles : int, default=None
             Specify the maximum number of articles to scrape. By default, scrapes all available.
 
-        threads : int, default=1
-            The number of threads to use for scraping. By default, no multithreading is performed.
-
         Returns
         -------
         fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
         """
-        engines = [Google, Bing, Yahoo]
-        engine_results = []
-
-        with ThreadPoolExecutor(max_workers=threads) as executor:
-            # Submitting the tasks to the executor
-            futures = [
-                executor.submit(
-                    engine(
-                        start_date=self.start_date,
-                        end_date=self.end_date,
-                        duration=self.duration,
-                        company=self.company,
-                        country=self.country,
-                    ).get_links,
-                    max_articles,
-                )
-                for engine in engines
-            ]
-
-            for future in as_completed(futures):
-                # Collecting the results
-                engine_results.append(future.result())
-
-        fetched_links = pd.concat(engine_results, ignore_index=True)
-        return fetched_links
+        pass
 
 
 class Google(SearchEngines):
     """
     A Class aimed at extracting relevant news article links from Google.
-
-    Parameters
-    ----------
-    start_date : {}, default=None
-        Specify a start date to be included in the Google search
-
-    end_date : {}, default=None
-        Specify a end date to be included in the Google search
-
-    duration : {}, default=None
-        Specify a specific number of months back from today in the Google search
-
-    company : {}, default=None
-        Specify a start date to be included in the Google search
 
     Examples
     --------
@@ -110,7 +77,7 @@ class Google(SearchEngines):
     """
 
     ROOT = "https://www.google.com/"
-    USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+    USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36 Edg/111.0.1661.44"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -134,55 +101,63 @@ class Google(SearchEngines):
         >>> google = Google(company="Tesla")
         >>> links = google.get_links(max_articles=50)
         """
+        query_params = {
+            "q": self.company,
+            "hl": "en",
+            "tbm": "nws",
+            "gl": self.country
+        }
 
         # adding date query parameters
         if self.start_date and self.end_date:
-            date_range = f"&tbs=cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
-        else:
-            date_range = ""
+            query_params["tbs"] = f"cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
 
         # define full search url
-        search = f"{Google.ROOT}search?q={self.company}&hl=en&tbm=nws&gl={self.country}{date_range}"
-
-        # define loop variables
-        results = []
-        article_count = 0
+        query_string = "&".join([f"{key}={value}" for key, value in query_params.items()])
+        search_url = f"{Google.ROOT}search?{query_string}"
 
         # create session and extract links from different pages
         with Session() as session:
-            req = Request(search, headers={"User-Agent": Google.USER_AGENT})
 
-            link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}")
-
-            page = urlopen(req)
-
-            link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
-
-            soup = BeautifulSoup(page.read(), "lxml")
+            # define loop variables
+            results = []
+            article_count = 0
 
             while True:
+                LOGGER.debug(f"Read articles: {article_count}")
+
+                # create request
+                req = Request(search_url, headers={"User-Agent": Google.USER_AGENT})
+                LOGGER.debug(f"Starting new HTTPS connection: {search_url}")
+
+                # open the request
+                page = urlopen(req)
+                LOGGER.info(f"{req.get_method()} {search_url} {page.status}")
+
+                # create beautiful soup object
+                soup = BeautifulSoup(page.read(), "lxml")
+
                 # extract HTML anchors in the page
-                # search = soup.find("div", {"id": "search"})
                 anchors = soup.find_all("a", {"class": "WlydOe"})
 
-                # append each of the "href" to the links
+                # loop over all the found links and append
                 for a in anchors:
-                    link = a["href"]
-                    title = a.find("div", {"role": "heading"}).text
-                    source = a.find("span").text
 
+                    # extract information
                     result = {
                         "Search Engine": "Google",
-                        "Link": link,
-                        "Title": title,
-                        "Source": source,
+                        "Link": a["href"],
+                        "Title": a.find("div", {"role": "heading"}).text,
+                        "Source": a.find("span").text,
                     }
 
+                    # add new information to resutls
                     results.append(result)
+                    LOGGER.info(result)
 
-                    link_extractor_logger.info(result)
-
+                    # increase number of articles read by 1
                     article_count += 1
+
                     # check if we have reached the desired number of articles
                     if max_articles and article_count >= max_articles:
                         break
@@ -193,21 +168,14 @@ class Google(SearchEngines):
 
                 # check if there are more pages to fetch
                 next_page = soup.find("a", attrs={"id": "pnnext"})
-                if next_page:
-                    next_link = Google.ROOT + next_page["href"]
-                    req = Request(next_link, headers={"User-Agent": Google.USER_AGENT})
-                    page = urlopen(req)
-
-                    link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
-
-                    soup = BeautifulSoup(page.read(), "lxml")
-                else:
+                if not next_page:
                     break
 
+                # update url and continue to next page 
+                search_url = Google.ROOT + next_page["href"]
                 time.sleep(random.uniform(*delay_range))
 
-        fetched_links = pd.DataFrame(results)
-        return fetched_links
+        return pd.DataFrame(results)
 
 
 class Bing(SearchEngines):
@@ -281,11 +249,11 @@ class Bing(SearchEngines):
             with Session() as session:
                 req = Request(search, headers={"User-Agent": ua.random})
 
-                link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}") # Might not be needed to have multiple different sessions
+                LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}") # Might not be needed to have multiple different sessions
 
                 page = urlopen(req)
 
-                link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+                LOGGER.info(f"{req.get_method()} {search} {page.status}")
 
                 soup = BeautifulSoup(page.read(), "lxml")
 
@@ -314,7 +282,7 @@ class Bing(SearchEngines):
 
                 results.append(result)
 
-                link_extractor_logger.info(result)
+                LOGGER.info(result)
 
                 article_count += 1
 
@@ -337,20 +305,6 @@ class Bing(SearchEngines):
 class Yahoo(SearchEngines):
     """
     A Class aimed at extracting relevant news article links from Yahoo.
-
-    Parameters
-    ----------
-    start_date : {}, default=None
-        Specify a start date to be included in the Yahoo search
-
-    end_date : {}, default=None
-        Specify a end date to be included in the Yahoo search
-
-    duration : {}, default=None
-        Specify a specific number of months back from today in the Yahoo search
-
-    company : {}, default=None
-        Specify a start date to be included in the Yahoo search
 
     Examples
     --------
@@ -400,11 +354,11 @@ class Yahoo(SearchEngines):
         with Session() as session:
             req = Request(search, headers={"User-Agent": ua.random})
 
-            link_extractor_logger.debug(f"Starting new HTTPS connection (1): {req.host}")
+            LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}")
             
             page = urlopen(req)
 
-            link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+            LOGGER.info(f"{req.get_method()} {search} {page.status}")
 
             soup = BeautifulSoup(page.read(), "lxml")
 
@@ -431,7 +385,7 @@ class Yahoo(SearchEngines):
 
                     results.append(result)
 
-                    link_extractor_logger.info(result)
+                    LOGGER.info(result)
 
                     article_count += 1
 
@@ -450,7 +404,7 @@ class Yahoo(SearchEngines):
                     req = Request(next_link, headers={"User-Agent": ua.random})
                     page = urlopen(req)
 
-                    link_extractor_logger.info(f"{req.get_method()} {search} {page.status}")
+                    LOGGER.info(f"{req.get_method()} {search} {page.status}")
 
                     soup = BeautifulSoup(page.read(), "lxml")
                 else:
@@ -460,6 +414,51 @@ class Yahoo(SearchEngines):
 
         fetched_links = pd.DataFrame(results)
         return fetched_links
+
+
+def get_all_links(start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None, threads=1):
+    """
+    Retrieves links from multiple search engines in parallel and concatenates the results into a single pandas DataFrame.
+
+    Parameters:
+    -----------
+    start_date : str, optional
+        The start date for the search. Defaults to None.
+    
+    end_date : str, optional
+        The end date for the search. Defaults to None.
+    
+    duration : str, optional
+        The duration for the search. Defaults to None.
+    
+    company : str, optional
+        The name of the company to search for. Defaults to None.
+    
+    country : str, optional
+        The country to search in. Defaults to "us".
+    
+    max_articles : int, optional
+        The maximum number of articles to retrieve from each search engine. Defaults to None (no limit).
+    
+    threads : int, optional
+        The number of threads to use for parallelization. Defaults to 1.
+
+    Returns:
+    --------
+    pandas.DataFrame
+        A DataFrame containing the links retrieved from all search engines.
+
+    """
+    engines = [Google, Bing, Yahoo]
+    args = (start_date, end_date, duration, company, country)
+    engine_results = []
+
+    with ThreadPoolExecutor(max_workers=threads) as executor:
+        # Submitting the tasks to the executor
+        futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
+        engine_results = [future.result() for future in as_completed(futures)]
+
+    return pd.concat(engine_results, ignore_index=True)
 
 
 ### TODO ###
