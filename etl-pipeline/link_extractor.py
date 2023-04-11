@@ -19,7 +19,7 @@ from requests.utils import unquote
 
 # Anti-Scraping Measures
 ua = UserAgent(fallback="chrome")
-delay_range = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
+DELAY_RANGE = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
 
 # Logging Config
 LOG_DIR = "logs"
@@ -173,7 +173,7 @@ class Google(SearchEngines):
 
                 # update url and continue to next page 
                 search_url = Google.ROOT + next_page["href"]
-                time.sleep(random.uniform(*delay_range))
+                time.sleep(random.uniform(*DELAY_RANGE))
 
         return pd.DataFrame(results)
 
@@ -296,7 +296,7 @@ class Bing(SearchEngines):
                 break
 
             num_results += 10
-            time.sleep(random.uniform(*delay_range))
+            time.sleep(random.uniform(*DELAY_RANGE))
 
         fetched_links = pd.DataFrame(results)
         return fetched_links
@@ -410,7 +410,7 @@ class Yahoo(SearchEngines):
                 else:
                     break
 
-                time.sleep(random.uniform(*delay_range))
+                time.sleep(random.uniform(*DELAY_RANGE))
 
         fetched_links = pd.DataFrame(results)
         return fetched_links
