@@ -1,0 +1,36 @@
+2023-04-11 18:06:37,840 - Read articles: 0
+2023-04-11 18:06:37,840 - Starting new HTTPS connection: https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us
+2023-04-11 18:07:58,536 - Read articles: 0
+2023-04-11 18:07:58,537 - Starting new HTTPS connection: https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us
+2023-04-11 18:14:17,840 - Read articles: 0
+2023-04-11 18:14:17,842 - Starting new HTTPS connection: https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us
+2023-04-12 08:19:15,496 - Read articles: 0
+2023-04-12 08:19:15,500 - Starting new HTTPS connection: https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us
+2023-04-12 08:19:17,060 - GET https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us 200
+2023-04-12 08:19:17,569 - {'Search Engine': 'Google', 'Link': 'https://www.bloomberg.com/news/articles/2023-04-11/swiss-government-set-for-grilling-over-ubs-credit-suisse-deal', 'Title': 'Swiss Government Set for Grilling Over UBS-Credit Suisse Deal', 'Source': ''}
+2023-04-12 08:19:23,860 - Read articles: 0
+2023-04-12 08:19:23,862 - Starting new HTTPS connection: https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us
+2023-04-12 08:19:25,071 - GET https://www.google.com/search?q=UBS&hl=en&tbm=nws&gl=us 200
+2023-04-12 08:19:25,622 - {'Search Engine': 'Google', 'Link': 'https://www.bloomberg.com/news/articles/2023-04-11/swiss-government-set-for-grilling-over-ubs-credit-suisse-deal', 'Title': 'Swiss Government Set for Grilling Over UBS-Credit Suisse Deal', 'Source': ''}
+2023-04-12 08:19:25,623 - {'Search Engine': 'Google', 'Link': 'https://finance.yahoo.com/news/swiss-president-defends-ubs-credit-093824325.html', 'Title': 'Swiss Parliament’s Lower House Debates UBS Deal After Upper House Nod (1)', 'Source': 'Yahoo Finance'}
+2023-04-12 08:19:25,624 - {'Search Engine': 'Google', 'Link': 'https://www.reuters.com/business/finance/swiss-finance-minister-sees-no-stumbling-blocks-ubs-takeover-credit-suisse-2023-04-08/', 'Title': "Swiss finance minister sees no 'stumbling blocks' to UBS takeover of Credit \nSuisse", 'Source': 'Reuters'}
+2023-04-12 08:19:25,624 - {'Search Engine': 'Google', 'Link': 'https://www.bloomberg.com/news/articles/2023-04-12/ubs-weighs-retaining-credit-suisse-unit-serving-india-s-rich', 'Title': "UBS Weighs Retaining Credit Suisse Unit Serving India's Rich", 'Source': 'Bloomberg.com'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.bloomberg.com/news/videos/2023-04-12/swiss-lower-house-votes-against-ubs-credit-suisse-deal-video', 'Title': 'Swiss Lower House Votes Against UBS-Credit Suisse Deal', 'Source': 'Bloomberg.com'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.cnbc.com/2023/04/10/sell-mining-stocks-and-load-up-on-energy-ones-with-these-8-names-ubs.html', 'Title': 'Sell these mining stocks and load up on 8 energy ones instead: UBS', 'Source': 'CNBC'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.advisorhub.com/ubs-lays-off-client-associates/', 'Title': 'UBS Lays Off Client Associates', 'Source': 'AdvisorHub'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.wsj.com/livecoverage/stock-market-news-today-04-11-2023/card/get-ready-for-more-retail-closures-ubs-e9CpBaroE7DHMkBbA83p', 'Title': 'Get Ready for More Retail Closures: UBS', 'Source': 'Wall Street Journal'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.barrons.com/articles/mid-cap-banks-profits-deposits-funding-crisis-5aae9532', 'Title': "Mid-Cap Banks Face New Pressure on Profits After 'Crisis,' UBS Warns", 'Source': "Barron's"}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.scmp.com/business/banking-finance/article/3216458/wealthy-families-middle-east-europe-keen-set-family-offices-hong-kong-ubs-boss-says', 'Title': 'Wealthy families attracted by Hong Kong policies, bay area opportunities: \nUBS', 'Source': 'South China Morning Post'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://finance.yahoo.com/video/ubs-analysts-predict-extended-cloud-202019855.html', 'Title': 'UBS analysts predict extended cloud spending cuts for Microsoft, other tech \ncompanies', 'Source': 'Yahoo Finance'}
+2023-04-12 08:19:25,625 - {'Search Engine': 'Google', 'Link': 'https://www.cnbc.com/2023/04/10/ubs-says-gains-will-be-limited-for-this-banking-stock-after-recent-crisis.html', 'Title': "UBS downgrades this regional bank, says 'structural uncertainties' will \npressure the stock", 'Source': 'CNBC'}
+2023-04-12 08:19:26,691 - Read articles: 12
+2023-04-12 08:19:26,691 - Starting new HTTPS connection: https://www.google.com//search?q=UBS&hl=en&gl=us&ucbcb=1&tbm=nws&ei=bE02ZPG5O4arptQP7eWKsA0&start=10&sa=N&ved=2ahUKEwjxn7C32aP-AhWGlYkEHe2yAtYQ8NMDegQIBBAW
+2023-04-12 08:19:27,047 - GET https://www.google.com//search?q=UBS&hl=en&gl=us&ucbcb=1&tbm=nws&ei=bE02ZPG5O4arptQP7eWKsA0&start=10&sa=N&ved=2ahUKEwjxn7C32aP-AhWGlYkEHe2yAtYQ8NMDegQIBBAW 200
+2023-04-12 08:19:27,474 - {'Search Engine': 'Google', 'Link': 'https://www.reuters.com/world/india/ubs-considers-retaining-credit-suisses-india-unit-bloomberg-news-2023-04-12/', 'Title': "UBS considers retaining Credit Suisse's India unit - Bloomberg News", 'Source': 'Reuters'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://www.ubs.com/us/en/wealth-management/insights/market-news/article.1588915.html', 'Title': 'Structured investments: Tap into rising commodity prices | UBS United \nStates of America', 'Source': 'UBS Financial Services'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://www.advisorhub.com/parliaments-upper-house-agrees-to-guarantees-for-ubs-cs-merger/', 'Title': "Parliament's Upper House Agrees to Guarantees for UBS-CS Merger", 'Source': 'AdvisorHub'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://footwearnews.com/2023/business/retail/ubs-50000-stores-could-close-by-2027-1203444605/', 'Title': '50,000 Stores Could Close in the Next 5 Years, UBS Says', 'Source': 'Footwear News'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://seekingalpha.com/news/3955703-ubs-group-ag-declares-missing-dividend', 'Title': 'UBS goes ex dividend tomorrow (NYSE:UBS)', 'Source': 'Seeking Alpha'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://www.investmentnews.com/credit-suisse-deal-will-make-ubs-a-wealth-management-powerhouse-jpmorgan-236257', 'Title': "Credit Suisse deal will make UBS a wealth management 'powerhouse': JPMorgan", 'Source': 'InvestmentNews'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://www.reuters.com/business/finance/credit-suisse-job-cuts-must-be-frozen-bankers-leader-says-2023-04-11/', 'Title': 'Credit Suisse job cuts must be frozen, bank employees leader says', 'Source': 'Reuters'}
+2023-04-12 08:19:27,475 - {'Search Engine': 'Google', 'Link': 'https://www.ubs.com/global/en/wealth-management/our-approach/marketnews/article.1588914.html', 'Title': 'The dollar is dead; Long live the dollar', 'Source': 'UBS Financial Services'}

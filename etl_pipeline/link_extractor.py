@@ -18,13 +18,11 @@ from requests.utils import unquote
 
 
 # Anti-Scraping Measures
-ua = UserAgent(fallback="chrome")
+UA = UserAgent(fallback="chrome")
 DELAY_RANGE = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
 
 # Logging Config
 LOG_DIR = "logs"
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
 
 LOGGER = logging.getLogger("link_extractor")
 LOGGER.setLevel(logging.DEBUG)
@@ -247,7 +245,7 @@ class Bing(SearchEngines):
             search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={self.company}&first={num_results}{date_range}"  # specify lang parameter still todo
 
             with Session() as session:
-                req = Request(search, headers={"User-Agent": ua.random})
+                req = Request(search, headers={"User-Agent": UA.random})
 
                 LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}") # Might not be needed to have multiple different sessions
 
@@ -352,7 +350,7 @@ class Yahoo(SearchEngines):
 
         # create session and extract links from different pages
         with Session() as session:
-            req = Request(search, headers={"User-Agent": ua.random})
+            req = Request(search, headers={"User-Agent": UA.random})
 
             LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}")
             
@@ -401,7 +399,7 @@ class Yahoo(SearchEngines):
                 next_page = soup.find("a", attrs={"class": "next"})
                 if next_page:
                     next_link = next_page["href"]
-                    req = Request(next_link, headers={"User-Agent": ua.random})
+                    req = Request(next_link, headers={"User-Agent": UA.random})
                     page = urlopen(req)
 
                     LOGGER.info(f"{req.get_method()} {search} {page.status}")
