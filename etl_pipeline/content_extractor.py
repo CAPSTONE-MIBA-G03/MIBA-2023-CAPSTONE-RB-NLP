@@ -93,7 +93,7 @@ def get_content(links: list):
     mem_per_article = 100 * (2**20)  ## 100 Mebibytes (MiB) per article
     max_threads = min(cpu_count, int(mem_avail / mem_per_article), num_articles)
     num_threads = max(1, max_threads)  # Ensure at least one thread
-    LOGGER.info(f"Using {num_threads} threads for parsing {num_articles} articles")
+    LOGGER.info(f"Using {num_threads} threads to parse {num_articles} articles")
 
     results = []
 

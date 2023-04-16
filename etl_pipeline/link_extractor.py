@@ -12,6 +12,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import pandas as pd
+import psutil
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests import Session
@@ -495,8 +496,14 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
     #engines = [Google, Bing, Yahoo]
     args = (start_date, end_date, duration, company, country)
     engine_results = []
+    
+    num_engines = len(engines)
+    num_threads = min(psutil.cpu_count(), num_engines)
 
-    with ThreadPoolExecutor(max_workers=threads) as executor:
+    LOGGER.info(f"Using {num_threads} threads, accessing {num_engines} search engines")
+
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
         # Submitting the tasks to the executor
         futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
         engine_results = [future.result() for future in as_completed(futures)]
@@ -511,4 +518,3 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
 # Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
 # WRITE TESTS / ADD LOGGING!!!
 # Try to filter by dates when getting the links themselves
-# Handle Spaces in search AKA -> Roland Berger has to be parsed as Roland+Berger in the search string
