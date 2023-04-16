@@ -1,21 +1,21 @@
 # Imports
 import hashlib
 import logging
+import os
 import random
 import re
 import time
-import os
-import pandas as pd
-
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+import pandas as pd
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests import Session
 from requests.utils import unquote
-
 
 # Anti-Scraping Measures
 UA = UserAgent(fallback="chrome")
@@ -68,9 +68,26 @@ class Google(SearchEngines):
     """
     A Class aimed at extracting relevant news article links from Google.
 
+    Parameters
+    ----------
+    start_date : {}, default=None
+        Specify a start date to be included in the Google search.
+
+    end_date : {}, default=None
+        Specify a end date to be included in the Google search.
+
+    duration : {}, default=None
+        Specify a specific number of months back from today in the Google search.
+
+    company : {}, default=None
+        Specify a start date to be included in the Google search.
+
+    country : {}, default="us"
+        Specify a country to be included in the Google search. Defaults to "us".
+
     Examples
     --------
-    >>> from link_extractor import Google
+    >>> from etl_pipeline.link_extractor import Google
     >>> google = Google(company="Tesla")
     """
 
@@ -100,7 +117,7 @@ class Google(SearchEngines):
         >>> links = google.get_links(max_articles=50)
         """
         query_params = {
-            "q": self.company,
+            "q": quote(self.company), # Enables search to have spaces
             "hl": "en",
             "tbm": "nws",
             "gl": self.country
@@ -183,20 +200,23 @@ class Bing(SearchEngines):
     Parameters
     ----------
     start_date : {}, default=None
-        Specify a start date to be included in the Bing search
+        Specify a start date to be included in the Bing search.
 
     end_date : {}, default=None
-        Specify a end date to be included in the Bing search
+        Specify a end date to be included in the Bing search.
 
     duration : {}, default=None
-        Specify a specific number of months back from today in the Bing search
+        Specify a specific number of months back from today in the Bing search.
 
     company : {}, default=None
-        Specify a start date to be included in the Bing search
+        Specify a start date to be included in the Bing search.
+
+    country : {}, default="us"
+        Specify a country to be included in the Bing search. Defaults to "us".
 
     Examples
     --------
-    >>> from link_extractor import Bing
+    >>> from etl_pipeline.link_extractor import Bing
     >>> bing = Bing(company="Tesla")
     """
 
@@ -242,7 +262,7 @@ class Bing(SearchEngines):
 
         while True:
             # define full search url
-            search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={self.company}&first={num_results}{date_range}"  # specify lang parameter still todo
+            search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={quote(self.company)}&first={num_results}{date_range}"  # specify lang parameter still todo
 
             with Session() as session:
                 req = Request(search, headers={"User-Agent": UA.random})
@@ -304,9 +324,26 @@ class Yahoo(SearchEngines):
     """
     A Class aimed at extracting relevant news article links from Yahoo.
 
+    Parameters
+    ----------
+    start_date : {}, default=None
+        Specify a start date to be included in the Yahoo search.
+
+    end_date : {}, default=None
+        Specify a end date to be included in the Yahoo search.
+
+    duration : {}, default=None
+        Specify a specific number of months back from today in the Yahoo search.
+
+    company : {}, default=None
+        Specify a start date to be included in the Yahoo search.
+
+    country : {}, default="us"
+        Specify a country to be included in the Yahoo search. Defaults to "us".
+
     Examples
     --------
-    >>> from link_extractor import Yahoo
+    >>> from etl_pipeline.link_extractor import Yahoo
     >>> yahoo = Yahoo(company="Tesla")
     """
 
@@ -342,7 +379,7 @@ class Yahoo(SearchEngines):
             date_range = ""
 
         # define full search url
-        search = f"{Yahoo.ROOT}search?p={self.company}&fr=news&country={self.country}{date_range}&lang=en-US"
+        search = f"{Yahoo.ROOT}search?p={quote(self.company)}&fr=news&country={self.country}{date_range}&lang=en-US"
 
         # define loop variables
         results = []
@@ -414,12 +451,15 @@ class Yahoo(SearchEngines):
         return fetched_links
 
 
-def get_all_links(start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None, threads=1):
+def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None, threads=1):
     """
-    Retrieves links from multiple search engines in parallel and concatenates the results into a single pandas DataFrame.
+    Wrapper function that calls the "get_links" method on multiple search engine classes in parallel and concatenates the results into a single pandas DataFrame.
 
     Parameters:
     -----------
+    engines : list, optional
+        A list containing prefered search engines. Defaults to all available.
+        
     start_date : str, optional
         The start date for the search. Defaults to None.
     
@@ -446,8 +486,13 @@ def get_all_links(start_date=None, end_date=None, duration=None, company=None, c
     pandas.DataFrame
         A DataFrame containing the links retrieved from all search engines.
 
+    Examples
+    --------
+    >>> from etl_pipeline.link_extractor import Bing, Yahoo, get_all_links
+    >>> bing_yahoo = get_all_links(engines=[Bing, Yahoo], max_articles=20)
     """
-    engines = [Google, Bing, Yahoo]
+
+    #engines = [Google, Bing, Yahoo]
     args = (start_date, end_date, duration, company, country)
     engine_results = []
 
@@ -461,12 +506,9 @@ def get_all_links(start_date=None, end_date=None, duration=None, company=None, c
 
 ### TODO ###
 
-# - Not sure if Class structure optimal
-# - Instead of "max_pages", maybe "max_news"? So limit not pages, but links DONE
-# - ATM for testing a bit excessive use of "self." - should simplify
 # - Make request session more robust by adding cookies, headers etc. Also, there is a way to make google think
 #   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
-# - Spanish results??? Way around it? DONE
 # Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
 # WRITE TESTS / ADD LOGGING!!!
 # Try to filter by dates when getting the links themselves
+# Handle Spaces in search AKA -> Roland Berger has to be parsed as Roland+Berger in the search string
