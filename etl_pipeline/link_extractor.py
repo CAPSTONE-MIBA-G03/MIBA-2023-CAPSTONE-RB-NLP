@@ -7,11 +7,9 @@ import re
 import time
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-import pandas as pd
 import psutil
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
