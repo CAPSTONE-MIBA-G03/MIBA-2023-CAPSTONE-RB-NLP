@@ -45,7 +45,7 @@ class SearchEngines:
         self.country = country
 
     @abstractmethod
-    def get_links(self, max_articles=None, threads=1):
+    def get_links(self, max_articles=None):
         """
         An abstract method that gets links from the search engine.
 
@@ -515,3 +515,4 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
 # Try to filter by dates when getting the links themselves
 
 # Get Description, make output not a dataframe, name columns better (snakecase and unique from where we get stuff) SearchEngine (se), Newspaper (n3k), Scraped, (scrp)
+# Instead of soup[...], maybe implement .get(x, y)
