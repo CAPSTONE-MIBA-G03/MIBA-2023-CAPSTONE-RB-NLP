@@ -20,7 +20,7 @@ from requests.utils import unquote
 
 # Anti-Scraping Measures
 UA = UserAgent(fallback="chrome")
-DELAY_RANGE = (0.5, 1.5)  # set a random delay between requests to avoid rate limiting
+DELAY_RANGE = (1.0, 2.5)  # set a random delay between requests to avoid rate limiting
 
 # Logging Config
 LOG_DIR = "logs"
@@ -62,6 +62,7 @@ class SearchEngines:
         -------
         fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
         """
+
         pass
 
 
@@ -98,7 +99,7 @@ class Google(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> pd.DataFrame:
+    def get_links(self, max_articles=None) -> dict:
         """
         Extracts links from specified search engine class and returns a dataframe object
 
@@ -109,11 +110,11 @@ class Google(SearchEngines):
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
+        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
 
         Examples
         --------
-        >>> from link_extractor import Google
+        >>> from etl_pipeline.link_extractor import Google
         >>> google = Google(company="Tesla")
         >>> links = google.get_links(max_articles=50)
         """
@@ -159,18 +160,19 @@ class Google(SearchEngines):
                 # loop over all the found links and append
                 for a in anchors:
 
-                    # extract information
+                    link = a["href"]
+                    title = a.find("div", {"role": "heading"}).text
+                    source = a.find("span").text
+
                     result = {
-                        "Search Engine": "Google",
-                        "Link": a["href"],
-                        "Title": a.find("div", {"role": "heading"}).text,
-                        "Source": a.find("span").text,
+                        "engine": "Google",
+                        "se_link": link,
+                        "se_title": title,
+                        "se_source": source,
                     }
 
-                    # add new information to resutls
                     results.append(result)
                     LOGGER.info(result)
-
                     # increase number of articles read by 1
                     article_count += 1
 
@@ -191,7 +193,7 @@ class Google(SearchEngines):
                 search_url = Google.ROOT + next_page["href"]
                 time.sleep(random.uniform(*DELAY_RANGE))
 
-        return pd.DataFrame(results)
+        return results
 
 
 class Bing(SearchEngines):
@@ -226,7 +228,7 @@ class Bing(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> pd.DataFrame:
+    def get_links(self, max_articles=None) -> dict:
         """
         Extracts links from specified search engine class and returns a dataframe object
 
@@ -237,11 +239,11 @@ class Bing(SearchEngines):
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
+        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
 
         Examples
         --------
-        >>> from link_extractor import Bing
+        >>> from etl_pipeline.link_extractor import Bing
         >>> bing = Bing(company="Tesla")
         >>> links = bing.get_links(max_articles=50)
         """
@@ -293,14 +295,13 @@ class Bing(SearchEngines):
                 source = article["data-author"]
 
                 result = {
-                        "Search Engine": "Bing",
-                        "Link": link,
-                        "Title": title,
-                        "Source": source,
+                        "engine": "Bing",
+                        "se_link": link,
+                        "se_title": title,
+                        "se_source": source,
                     }
 
                 results.append(result)
-
                 LOGGER.info(result)
 
                 article_count += 1
@@ -317,8 +318,7 @@ class Bing(SearchEngines):
             num_results += 10
             time.sleep(random.uniform(*DELAY_RANGE))
 
-        fetched_links = pd.DataFrame(results)
-        return fetched_links
+        return results
 
 
 class Yahoo(SearchEngines):
@@ -353,7 +353,7 @@ class Yahoo(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> pd.DataFrame:
+    def get_links(self, max_articles=None) -> dict:
         """
         Extracts links from specified search engine class and returns a dataframe object
 
@@ -364,11 +364,11 @@ class Yahoo(SearchEngines):
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
+        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
 
         Examples
         --------
-        >>> from link_extractor import Yahoo
+        >>> from etl_pipeline.link_extractor import Yahoo
         >>> yahoo = Yahoo(company="Tesla")
         >>> links = yahoo.get_links(max_articles=50)
         """
@@ -402,25 +402,26 @@ class Yahoo(SearchEngines):
                 # extract HTML anchors in the page
                 anchors = soup.find_all("div", "NewsArticle")
 
-                # append each of the "href" to the links
                 for a in anchors:
                     # First have to clean the links (yahoo provides them somewhat encoded)
-                    messy_link = a.find("a")["href"]
-                    unquoted_link = unquote(messy_link)
+                    try:
+                        messy_link = a.find("a")["href"]
+                        unquoted_link = unquote(messy_link)
+                        link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
+                    except:
+                        link = None
 
-                    link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
                     title = a.find("h4", "s-title").text
                     source = a.find("span", "s-source").text
 
                     result = {
-                        "Search Engine": "Yahoo",
-                        "Link": link,
-                        "Title": title,
-                        "Source": source,
+                        "engine": "Yahoo",
+                        "se_link": link,
+                        "se_title": title,
+                        "se_source": source,
                     }
-
+                    
                     results.append(result)
-
                     LOGGER.info(result)
 
                     article_count += 1
@@ -448,11 +449,10 @@ class Yahoo(SearchEngines):
 
                 time.sleep(random.uniform(*DELAY_RANGE))
 
-        fetched_links = pd.DataFrame(results)
-        return fetched_links
+        return results
 
 
-def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None, threads=1):
+def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None) -> list:
     """
     Wrapper function that calls the "get_links" method on multiple search engine classes in parallel and concatenates the results into a single pandas DataFrame.
 
@@ -478,9 +478,6 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
     
     max_articles : int, optional
         The maximum number of articles to retrieve from each search engine. Defaults to None (no limit).
-    
-    threads : int, optional
-        The number of threads to use for parallelization. Defaults to 1.
 
     Returns:
     --------
@@ -507,8 +504,8 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
         # Submitting the tasks to the executor
         futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
         engine_results = [future.result() for future in as_completed(futures)]
-
-    return pd.concat(engine_results, ignore_index=True)
+        
+    return [result for sublist in engine_results for result in sublist]
 
 
 ### TODO ###
@@ -518,3 +515,5 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
 # Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
 # WRITE TESTS / ADD LOGGING!!!
 # Try to filter by dates when getting the links themselves
+
+# Get Description, make output not a dataframe, name columns better (snakecase and unique from where we get stuff) SearchEngine (se), Newspaper (n3k), Scraped, (scrp)
