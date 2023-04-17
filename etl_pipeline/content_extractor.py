@@ -1,11 +1,11 @@
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 import psutil
 import requests
-
 from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from fake_useragent import UserAgent
 from newspaper import Article, Config
 from tqdm import tqdm
@@ -21,79 +21,83 @@ LOG_DIR = "logs"
 LOGGER = logging.getLogger("content_extractor")
 LOGGER.setLevel(logging.DEBUG)
 
-content_extractor_handler = logging.FileHandler(
-    os.path.join(LOG_DIR, "content_extractor.log")
-)
+content_extractor_handler = logging.FileHandler(os.path.join(LOG_DIR, "content_extractor.log"))
 content_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
 LOGGER.addHandler(content_extractor_handler)
 
 # Newspaper3k Config
 config = Config()
-config.browser_user_agent = UA.random  # "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+config.browser_user_agent = (UA.random)  # "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 config.memoize_articles = False
 config.request_timeout = 10
 
 
 def _process_with_bs(url):
-    # Inspired by: https://medium.com/analytics-vidhya/web-scraping-news-data-rss-feeds-python-and-google-cloud-platform-7a0df2bafe44 
-    
+    # Inspired by: https://medium.com/analytics-vidhya/web-scraping-news-data-rss-feeds-python-and-google-cloud-platform-7a0df2bafe44
+
     # Request the article url to get the web page content.
     article = requests.get(url, headers={"User-Agent": generate_user_agent()})
-    articles = BeautifulSoup(article.content, 'lxml')
-    articles_body = articles.findAll('body')
+    articles = BeautifulSoup(article.content, "lxml")
+    articles_body = articles.findAll("body")
 
     # 0. extract title
-    title = articles_body[0].find('h1').text
+    title = articles_body[0].find("h1").text
 
     # 1. extract all paragraph elements inside the page body
-    p_blocks = articles_body[0].findAll('p')
+    p_blocks = articles_body[0].findAll("p")
 
     # 2. for each paragraph, construct its patents elements hierarchy
-    #Create a dataframe to collect p_blocks data
+    # Create a dataframe to collect p_blocks data
     p_blocks_df = pd.DataFrame()
     for i in range(0, len(p_blocks)):
         # 2.1 Loop trough paragraph parents to extract its element name and id
         parents_list = []
 
         for parent in p_blocks[i].parents:
-            #Extract the parent id attribute if it exists
-            parent_id = parent.get('id', '')
-            
+            # Extract the parent id attribute if it exists
+            parent_id = parent.get("id", "")
+
             # Append the parent name and id to the parents table
-            parents_list.append(parent.name + 'id: ' + parent_id)
-    
+            parents_list.append(parent.name + "id: " + parent_id)
+
         # 2.2 Construct parents hierarchy
-        parent_element_list = ['' if (x == 'None' or x is None) else x for x in parents_list]     
+        parent_element_list = ["" if (x == "None" or x is None) else x for x in parents_list]
         # parent_element_list.reverse()  # uncomment if need to debug
-        parent_hierarchy = ' -> '.join(parent_element_list)
-        
+        parent_hierarchy = " -> ".join(parent_element_list)
+
         #   Append data table with the current paragraph data
-        d = pd.DataFrame([{"element_name": p_blocks[i].name,
-                          "parent_hierarchy": parent_hierarchy,
-                          "element_text": p_blocks[i].text,
-                          "element_text_count": len(str(p_blocks[i].text))}])
+        d = pd.DataFrame(
+            [
+                {
+                    "element_name": p_blocks[i].name,
+                    "parent_hierarchy": parent_hierarchy,
+                    "element_text": p_blocks[i].text,
+                    "element_text_count": len(str(p_blocks[i].text)),
+                }
+            ]
+        )
 
         p_blocks_df = pd.concat([d, p_blocks_df], ignore_index=True, sort=False)
-    
+
     # when no p's are found, then return empty body
     if len(p_blocks_df) <= 0:
-        return { 'url': url, 'title': title, 'body': '' }
+        return {"url": url, "title": title, "body": ""}
 
     # 3. concatenate paragraphs under the same parent hierarchy
-    df_groupby_parent_hierarchy = p_blocks_df.groupby(by=['parent_hierarchy'])
-    df_groupby_parent_hierarchy_sum = df_groupby_parent_hierarchy[['element_text_count']].sum()            
-    df_groupby_parent_hierarchy_sum.reset_index(inplace=True)            
+    df_groupby_parent_hierarchy = p_blocks_df.groupby(by=["parent_hierarchy"])
+    df_groupby_parent_hierarchy_sum = df_groupby_parent_hierarchy[["element_text_count"]].sum()
+    df_groupby_parent_hierarchy_sum.reset_index(inplace=True)
 
     # 4. count paragraphs length
-    maxid = df_groupby_parent_hierarchy_sum.loc[df_groupby_parent_hierarchy_sum['element_text_count'].idxmax(), 'parent_hierarchy']
+    maxid = df_groupby_parent_hierarchy_sum.loc[df_groupby_parent_hierarchy_sum["element_text_count"].idxmax(),"parent_hierarchy",]
 
     # 5. select the longest paragraph as the main article
-    body_list = p_blocks_df.loc[p_blocks_df['parent_hierarchy'] == maxid, 'element_text'].to_list()
+    body_list = p_blocks_df.loc[p_blocks_df["parent_hierarchy"] == maxid, "element_text"].to_list()
     body_list.reverse()
-    body = '\n'.join(body_list)
+    body = "\n".join(body_list)
 
-    return { 'url': url, 'title': title, 'body': body }
+    return {"url": url, "title": title, "body": body}
 
 
 def _process_with_n3k(article):
@@ -106,10 +110,6 @@ def _process_with_n3k(article):
 
 
 def _process_article(url, n3k_article):
-    """
-    Internal function that is used to parse newspaper3k "Article" Objects
-    """
-
     LOGGER.debug(f"Starting new HTTPS connection (1): {n3k_article.source_url}")
 
     # Process with n3k library
@@ -126,19 +126,21 @@ def _process_article(url, n3k_article):
     # Process with Beautiful Soup
     LOGGER.debug("Processing using Beautiful Soup")
     bs_article = _process_with_bs(url)
-    result.update({
-        "bs_link": bs_article['url'],
-        "bs_title": bs_article['title'],
-        "bs_body": bs_article['body']
-    })
+    result.update(
+        {
+            "bs_link": bs_article["url"],
+            "bs_title": bs_article["title"],
+            "bs_body": bs_article["body"],
+        }
+    )
 
     # time.sleep(random.uniform(*DELAY_RANGE))
     LOGGER.info(result)
-    
+
     return result
 
 
-def get_content(links: list):
+def get_content(links: list) -> dict:
     """
     Retrieves article content from multiple URLs in parallel and returns a pandas DataFrame with the parsed information.
 

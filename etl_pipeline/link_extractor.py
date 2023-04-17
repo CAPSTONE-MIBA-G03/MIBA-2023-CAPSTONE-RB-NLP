@@ -7,14 +7,13 @@ import re
 import time
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import psutil
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from requests import Session
-from requests.utils import unquote
+from requests.utils import quote, unquote
 
 # Anti-Scraping Measures
 UA = UserAgent(fallback="chrome")
@@ -45,7 +44,7 @@ class SearchEngines:
         self.country = country
 
     @abstractmethod
-    def get_links(self, max_articles=None):
+    def get_links(self, max_articles=None) -> list:
         """
         An abstract method that gets links from the search engine.
 
@@ -58,7 +57,8 @@ class SearchEngines:
 
         Returns
         -------
-        fetched_links : Pandas DataFrame with columns "Search Engine" and "Link"
+        results : list
+            List of dictionaries with keys "engine", "se_link", "se_title", and "se_source".
         """
 
         pass
@@ -97,9 +97,9 @@ class Google(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> dict:
+    def get_links(self, max_articles=None) -> list:
         """
-        Extracts links from specified search engine class and returns a dataframe object
+        Extracts links from specified search engine class.
 
         Parameters
         ----------
@@ -108,7 +108,8 @@ class Google(SearchEngines):
 
         Returns
         -------
-        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
+        results : list
+            List of dictionaries with keys "engine", "se_link", "se_title", and "se_source".
 
         Examples
         --------
@@ -226,9 +227,9 @@ class Bing(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> dict:
+    def get_links(self, max_articles=None) -> list:
         """
-        Extracts links from specified search engine class and returns a dataframe object
+        Extracts links from specified search engine class.
 
         Parameters
         ----------
@@ -237,7 +238,8 @@ class Bing(SearchEngines):
 
         Returns
         -------
-        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
+        results : list
+            List of dictionaries with keys "engine", "se_link", "se_title", and "se_source".
 
         Examples
         --------
@@ -351,9 +353,9 @@ class Yahoo(SearchEngines):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def get_links(self, max_articles=None) -> dict:
+    def get_links(self, max_articles=None) -> list:
         """
-        Extracts links from specified search engine class and returns a dataframe object
+        Extracts links from specified search engine class.
 
         Parameters
         ----------
@@ -362,7 +364,8 @@ class Yahoo(SearchEngines):
 
         Returns
         -------
-        results : Dictionary with columns "engine", "se_link", "se_title", and "se_source"
+        results : list
+            List of dictionaries with keys "engine", "se_link", "se_title", and "se_source".
 
         Examples
         --------
@@ -452,7 +455,7 @@ class Yahoo(SearchEngines):
 
 def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None) -> list:
     """
-    Wrapper function that calls the "get_links" method on multiple search engine classes in parallel and concatenates the results into a single pandas DataFrame.
+    Wrapper function that calls the "get_links" method on multiple search engine classes in parallel.
 
     Parameters:
     -----------
@@ -479,8 +482,8 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
 
     Returns:
     --------
-    pandas.DataFrame
-        A DataFrame containing the links retrieved from all search engines.
+    results : list
+        List of dictionaries with keys "engine", "se_link", "se_title", and "se_source" for all specified search engines.
 
     Examples
     --------
@@ -503,7 +506,7 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
         futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
         engine_results = [future.result() for future in as_completed(futures)]
         
-    return [result for sublist in engine_results for result in sublist]
+    return [results for sublist in engine_results for results in sublist]
 
 
 ### TODO ###
