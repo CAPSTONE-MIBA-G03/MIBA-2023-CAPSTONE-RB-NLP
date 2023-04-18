@@ -541,3 +541,4 @@ def get_all_links(
 # WRITE TESTS / ADD LOGGING!!!
 # Try to filter by dates when getting the links themselves DONE for Google
 # Instead of soup[...], maybe implement .get(x, y)
+# Get Description????????
