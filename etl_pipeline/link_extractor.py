@@ -9,6 +9,7 @@ from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
 
+import arrow
 import psutil
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
@@ -25,7 +26,9 @@ LOG_DIR = "logs"
 LOGGER = logging.getLogger("link_extractor")
 LOGGER.setLevel(logging.DEBUG)
 
-link_extractor_handler = logging.FileHandler(os.path.join(LOG_DIR, "link_extractor.log"))
+link_extractor_handler = logging.FileHandler(
+    os.path.join(LOG_DIR, "link_extractor.log")
+)
 link_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
 LOGGER.addHandler(link_extractor_handler)
@@ -36,7 +39,9 @@ class SearchEngines:
     A class aimed to provide a common interface for all the Search Engines (Google, Bing, etc.)
     """
 
-    def __init__(self, start_date=None, end_date=None, duration=None, company=None, country="us"):
+    def __init__(
+        self, start_date=None, end_date=None, duration=None, company=None, country="us"
+    ):
         self.start_date = start_date
         self.end_date = end_date
         self.duration = duration
@@ -71,18 +76,18 @@ class Google(SearchEngines):
     Parameters
     ----------
     start_date : {}, default=None
-        Specify a start date to be included in the Google search.
+        Specify a start date to be included in the Google search. Format: YYYYMMDD
 
     end_date : {}, default=None
-        Specify a end date to be included in the Google search.
+        Specify a end date to be included in the Google search. Format: YYYYMMDD
 
-    duration : {}, default=None
+    duration : int, default=None
         Specify a specific number of months back from today in the Google search.
 
-    company : {}, default=None
+    company : str, default=None
         Specify a start date to be included in the Google search.
 
-    country : {}, default="us"
+    country : str, default="us"
         Specify a country to be included in the Google search. Defaults to "us".
 
     Examples
@@ -103,7 +108,7 @@ class Google(SearchEngines):
 
         Parameters
         ----------
-        max_articles : {}, default=None
+        max_articles : int, default=None
             Specify the maximum number of google articles to scrape. By default, scrapes all available.
 
         Returns
@@ -118,23 +123,31 @@ class Google(SearchEngines):
         >>> links = google.get_links(max_articles=50)
         """
         query_params = {
-            "q": quote(self.company), # Enables search to have spaces
+            "q": quote(self.company),  # Enables search to have spaces
             "hl": "en",
             "tbm": "nws",
-            "gl": self.country
+            "gl": self.country,
         }
+
+        if all([self.start_date, self.end_date, self.duration]):
+            raise SyntaxError("Duration can't be an input if a start and/or end date is also specified")
 
         # adding date query parameters
         if self.start_date and self.end_date:
             query_params["tbs"] = f"cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
+        
+        elif self.duration:
+            today = arrow.now("Europe/Paris")
+            delta = today.shift(months=-self.duration)
+            query_params["tbs"] = f"cdr:1,cd_min:{delta.format('YYYYMMDD')},cd_max:{today.format('YYYYMMDD')}"
 
         # define full search url
         query_string = "&".join([f"{key}={value}" for key, value in query_params.items()])
         search_url = f"{Google.ROOT}search?{query_string}"
+        LOGGER.info(f"Search URL: {search_url}")
 
         # create session and extract links from different pages
         with Session() as session:
-
             # define loop variables
             results = []
             article_count = 0
@@ -158,7 +171,6 @@ class Google(SearchEngines):
 
                 # loop over all the found links and append
                 for a in anchors:
-
                     link = a["href"]
                     title = a.find("div", {"role": "heading"}).text
                     source = a.find("span").text
@@ -188,7 +200,7 @@ class Google(SearchEngines):
                 if not next_page:
                     break
 
-                # update url and continue to next page 
+                # update url and continue to next page
                 search_url = Google.ROOT + next_page["href"]
                 time.sleep(random.uniform(*DELAY_RANGE))
 
@@ -270,7 +282,9 @@ class Bing(SearchEngines):
             with Session() as session:
                 req = Request(search, headers={"User-Agent": UA.random})
 
-                LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}") # Might not be needed to have multiple different sessions
+                LOGGER.debug(
+                    f"Starting new HTTPS connection (1): {req.host}"
+                )  # Might not be needed to have multiple different sessions
 
                 page = urlopen(req)
 
@@ -289,17 +303,16 @@ class Bing(SearchEngines):
 
             # Extract all the URLs of the news articles from the HTML response
             for article in soup.find_all("div", "news-card"):
-
                 link = article["data-url"]
                 title = article["data-title"]
                 source = article["data-author"]
 
                 result = {
-                        "engine": "Bing",
-                        "se_link": link,
-                        "se_title": title,
-                        "se_source": source,
-                    }
+                    "engine": "Bing",
+                    "se_link": link,
+                    "se_title": title,
+                    "se_source": source,
+                }
 
                 results.append(result)
                 LOGGER.info(result)
@@ -312,7 +325,7 @@ class Bing(SearchEngines):
             if max_articles and article_count >= max_articles:
                 break
 
-            if num_results == 200: # This not optimal, have to change
+            if num_results == 200:  # This not optimal, have to change
                 break
 
             num_results += 10
@@ -392,7 +405,7 @@ class Yahoo(SearchEngines):
             req = Request(search, headers={"User-Agent": UA.random})
 
             LOGGER.debug(f"Starting new HTTPS connection (1): {req.host}")
-            
+
             page = urlopen(req)
 
             LOGGER.info(f"{req.get_method()} {search} {page.status}")
@@ -418,7 +431,7 @@ class Yahoo(SearchEngines):
                         "se_title": title,
                         "se_source": source,
                     }
-                    
+
                     results.append(result)
                     LOGGER.info(result)
 
@@ -450,7 +463,15 @@ class Yahoo(SearchEngines):
         return results
 
 
-def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None, duration=None, company=None, country="us", max_articles=None) -> list:
+def get_all_links(
+    engines=[Google, Bing, Yahoo],
+    start_date=None,
+    end_date=None,
+    duration=None,
+    company=None,
+    country="us",
+    max_articles=None,
+) -> list:
     """
     Wrapper function that calls the "get_links" method on multiple search engine classes in parallel.
 
@@ -458,22 +479,22 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
     -----------
     engines : list, optional
         A list containing prefered search engines. Defaults to all available.
-        
+
     start_date : str, optional
         The start date for the search. Defaults to None.
-    
+
     end_date : str, optional
         The end date for the search. Defaults to None.
-    
+
     duration : str, optional
         The duration for the search. Defaults to None.
-    
+
     company : str, optional
         The name of the company to search for. Defaults to None.
-    
+
     country : str, optional
         The country to search in. Defaults to "us".
-    
+
     max_articles : int, optional
         The maximum number of articles to retrieve from each search engine. Defaults to None (no limit).
 
@@ -488,21 +509,22 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
     >>> bing_yahoo = get_all_links(engines=[Bing, Yahoo], max_articles=20)
     """
 
-    #engines = [Google, Bing, Yahoo]
+    # engines = [Google, Bing, Yahoo]
     args = (start_date, end_date, duration, company, country)
     engine_results = []
-    
+
     num_engines = len(engines)
     num_threads = min(psutil.cpu_count(), num_engines)
 
     LOGGER.info(f"Using {num_threads} threads, accessing {num_engines} search engines")
 
-
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         # Submitting the tasks to the executor
-        futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
+        futures = [
+            executor.submit(engine(*args).get_links, max_articles) for engine in engines
+        ]
         engine_results = [future.result() for future in as_completed(futures)]
-        
+
     return [results for sublist in engine_results for results in sublist]
 
 
@@ -512,7 +534,6 @@ def get_all_links(engines=[Google, Bing, Yahoo], start_date=None, end_date=None,
 #   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
 # Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
 # WRITE TESTS / ADD LOGGING!!!
-# Try to filter by dates when getting the links themselves
-
-# Get Description, make output not a dataframe, name columns better (snakecase and unique from where we get stuff) SearchEngine (se), Newspaper (n3k), Scraped, (scrp)
+# Try to filter by dates when getting the links themselves DONE for Google
 # Instead of soup[...], maybe implement .get(x, y)
+# Get Description????????
