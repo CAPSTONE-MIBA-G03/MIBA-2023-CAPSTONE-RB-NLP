@@ -152,7 +152,7 @@ def get_content(links: list) -> dict:
     Returns:
     --------
     pandas.DataFrame
-        A DataFrame containing parsed information for each article, including link, title, body, author, and publish date.
+        A Dictionary containing parsed information for each article, including link, title, body, author, and publish date.
 
     Examples
     --------
