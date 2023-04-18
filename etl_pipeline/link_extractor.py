@@ -405,12 +405,9 @@ class Yahoo(SearchEngines):
 
                 for a in anchors:
                     # First have to clean the links (yahoo provides them somewhat encoded)
-                    try:
-                        messy_link = a.find("a")["href"]
-                        unquoted_link = unquote(messy_link)
-                        link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
-                    except:
-                        link = None
+                    messy_link = a.find("a")["href"]
+                    unquoted_link = unquote(messy_link)
+                    link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
 
                     title = a.find("h4", "s-title").text
                     source = a.find("span", "s-source").text
