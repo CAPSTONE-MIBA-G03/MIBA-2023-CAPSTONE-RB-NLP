@@ -26,18 +26,27 @@ content_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(messag
 
 LOGGER.addHandler(content_extractor_handler)
 
+TIMEOUT = 10
+
 # Newspaper3k Config
 config = Config()
 config.browser_user_agent = (UA.random)  # "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 config.memoize_articles = False
-config.request_timeout = 10
+config.request_timeout = TIMEOUT
 
 
 def _process_with_bs(url):
     # Inspired by: https://medium.com/analytics-vidhya/web-scraping-news-data-rss-feeds-python-and-google-cloud-platform-7a0df2bafe44
 
-    # Request the article url to get the web page content.
-    article = requests.get(url, headers={"User-Agent": generate_user_agent()})
+    try:
+        #request the article url to get the web page content.
+        article = requests.get(url, headers={"User-Agent": generate_user_agent()}, timeout=TIMEOUT)
+    except requests.exceptions.Timeout:
+        err = "Request to {url} timed out after {TIMEOUT} seconds"
+        LOGGER.error(err)
+        return {"url": url, "title": err, "body": ""}
+    
+    # create BeautifulSoup object
     articles = BeautifulSoup(article.content, "lxml")
     articles_body = articles.findAll("body")
 
