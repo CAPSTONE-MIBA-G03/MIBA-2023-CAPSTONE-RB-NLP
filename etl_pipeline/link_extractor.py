@@ -26,9 +26,7 @@ LOG_DIR = "logs"
 LOGGER = logging.getLogger("link_extractor")
 LOGGER.setLevel(logging.DEBUG)
 
-link_extractor_handler = logging.FileHandler(
-    os.path.join(LOG_DIR, "link_extractor.log")
-)
+link_extractor_handler = logging.FileHandler(os.path.join(LOG_DIR, "link_extractor.log"))
 link_extractor_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
 
 LOGGER.addHandler(link_extractor_handler)
@@ -39,9 +37,7 @@ class SearchEngines:
     A class aimed to provide a common interface for all the Search Engines (Google, Bing, etc.)
     """
 
-    def __init__(
-        self, start_date=None, end_date=None, duration=None, company=None, country="us"
-    ):
+    def __init__(self, start_date=None, end_date=None, duration=None, company=None, country="us"):
         self.start_date = start_date
         self.end_date = end_date
         self.duration = duration
@@ -135,7 +131,7 @@ class Google(SearchEngines):
         # adding date query parameters
         if self.start_date and self.end_date:
             query_params["tbs"] = f"cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}"
-        
+
         elif self.duration:
             today = arrow.now("Europe/Paris")
             delta = today.shift(months=-self.duration)
@@ -146,12 +142,12 @@ class Google(SearchEngines):
         search_url = f"{Google.ROOT}search?{query_string}"
         LOGGER.info(f"Search URL: {search_url}")
 
+        # define loop variables
+        results = []
+        article_count = 0
+
         # create session and extract links from different pages
         with Session() as session:
-            # define loop variables
-            results = []
-            article_count = 0
-
             while True:
                 LOGGER.debug(f"Read articles: {article_count}")
 
@@ -172,14 +168,16 @@ class Google(SearchEngines):
                 # loop over all the found links and append
                 for a in anchors:
                     link = a["href"]
-                    title = a.find("div", {"role": "heading"}).text
-                    source = a.find("span").text
+                    title = a.find("div", {"role": "heading"})
+                    description = title.find_next("div")
+                    source = a.find("span")
 
                     result = {
                         "engine": "Google",
                         "se_link": link,
-                        "se_title": title,
-                        "se_source": source,
+                        "se_title": title.text,
+                        "se_description": description.text,
+                        "se_source": source.text,
                     }
 
                     results.append(result)
@@ -196,7 +194,7 @@ class Google(SearchEngines):
                     break
 
                 # check if there are more pages to fetch
-                next_page = soup.find("a", attrs={"id": "pnnext"})
+                next_page = soup.find("a", {"id": "pnnext"})
                 if not next_page:
                     break
 
@@ -268,14 +266,15 @@ class Bing(SearchEngines):
 
         # define loop variables
         results = []
-
         article_count = 0
-        num_results = 0
+        num_results = 1
 
         # scrape links from Bing news
         prev_hash = None
 
         while True:
+            if num_results >= 211:
+                break
             # define full search url
             search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={quote(self.company)}&first={num_results}{date_range}"  # specify lang parameter still todo
 
@@ -295,22 +294,24 @@ class Bing(SearchEngines):
             # compute the hash of the current soup
             soup_hash = hashlib.md5(soup.encode()).hexdigest()
 
-            # compare the hash of the current soup with the previous hash
+            # compare the hash of the current soup with the previous hash and break if same
             if prev_hash and prev_hash == soup_hash:
                 break
 
             prev_hash = soup_hash
 
             # Extract all the URLs of the news articles from the HTML response
-            for article in soup.find_all("div", "news-card"):
+            for article in soup.find_all("div", {"class": "news-card"}):
                 link = article["data-url"]
                 title = article["data-title"]
+                description = article.find("div", {"class": "snippet"})["title"]
                 source = article["data-author"]
 
                 result = {
                     "engine": "Bing",
                     "se_link": link,
                     "se_title": title,
+                    "se_description": description,
                     "se_source": source,
                 }
 
@@ -323,9 +324,6 @@ class Bing(SearchEngines):
                     break
 
             if max_articles and article_count >= max_articles:
-                break
-
-            if num_results == 200:  # This not optimal, have to change
                 break
 
             num_results += 10
@@ -414,27 +412,27 @@ class Yahoo(SearchEngines):
 
             while True:
                 # extract HTML anchors in the page
-                anchors = soup.find_all("div", "NewsArticle")
+                anchors = soup.find_all("div", {"class": "NewsArticle"})
 
                 for a in anchors:
                     # First have to clean the links (yahoo provides them somewhat encoded)
                     try:
                         messy_link = a.find("a")["href"]
                         unquoted_link = unquote(messy_link)
-                        link = re.search(
-                            re.compile(r"RU=(.+)\/RK"), unquoted_link
-                        ).group(1)
+                        link = re.search(re.compile(r"RU=(.+)\/RK"), unquoted_link).group(1)
                     except:
                         link = None
 
-                    title = a.find("h4", "s-title").text
-                    source = a.find("span", "s-source").text
+                    title = a.find("h4", {"class": "s-title"})
+                    source = a.find("span", {"class": "s-source"})
+                    description = a.find("p", {"class": "s-desc"})
 
                     result = {
                         "engine": "Yahoo",
                         "se_link": link,
-                        "se_title": title,
-                        "se_source": source,
+                        "se_title": title.text,
+                        "se_description": description.text,
+                        "se_source": source.text,
                     }
 
                     results.append(result)
@@ -525,9 +523,7 @@ def get_all_links(
 
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         # Submitting the tasks to the executor
-        futures = [
-            executor.submit(engine(*args).get_links, max_articles) for engine in engines
-        ]
+        futures = [executor.submit(engine(*args).get_links, max_articles) for engine in engines]
         engine_results = [future.result() for future in as_completed(futures)]
 
     return [results for sublist in engine_results for results in sublist]
@@ -537,8 +533,9 @@ def get_all_links(
 
 # - Make request session more robust by adding cookies, headers etc. Also, there is a way to make google think
 #   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
-# Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
-# WRITE TESTS / ADD LOGGING!!!
-# Try to filter by dates when getting the links themselves DONE for Google
-# Instead of soup[...], maybe implement .get(x, y)
-# Get Description????????
+# - Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
+# - WRITE TESTS / ADD LOGGING!!!
+# - Instead of soup[...], maybe implement .get(x, y)
+# - Sooooo bing... -> might be able to get insane amount of news by just increasing the "first"
+#   part of url (we store this in a variable called "num_results"). Also, for some reason currently doing multiple requests in the
+#   same session not working (thats why we have session context manager inside recursion)
