@@ -509,7 +509,7 @@ def get_all_links(
     Examples
     --------
     >>> from etl_pipeline.link_extractor import Bing, Yahoo, get_all_links
-    >>> bing_yahoo = get_all_links(engines=[Bing, Yahoo], max_articles=20)
+    >>> bing_yahoo = get_all_links(company="Tesla", engines=[Bing, Yahoo], max_articles=20)
     """
 
     # engines = [Google, Bing, Yahoo]
