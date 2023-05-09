@@ -27,7 +27,7 @@ def get_args():
                         description='Script to execute article extraction pipeline')
 
     parser.add_argument('-c', '--company', default='Credit Suisse')
-    parser.add_argument('-x', '--max-articles', type=int, default=2)
+    parser.add_argument('-x', '--max-articles', type=int)
 
     args = parser.parse_args()
     return args
