@@ -8,7 +8,7 @@ def clean_content(df_dirty):
     # Removing all '\n' and '\t' from n3k_title, n3k_body, bs_title, bs_body as well as leading and trailing whitespaces and more than
     # one whitespace in between words and replacing them with np.nan if they are empty strings
     for col in ['n3k_title', 'n3k_body', 'bs_title', 'bs_body']:
-        df_dirty[col] = df_dirty[col].str.replace('\n', ' ').str.replace('\t', ' ').str.replace(' +', ' ').str.strip()
+        df_dirty[col] = df_dirty[col].str.replace('\n|\t', ' ', regex = False).str.replace(' +', ' ', regex = True).str.strip()
         df_dirty.loc[df_dirty[col] == '', col] = np.nan    
 
     # replacing n3k_titles with NA if they contain certain words and are less than 20 characters
