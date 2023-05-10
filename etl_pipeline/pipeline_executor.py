@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from link_extractor import get_all_links
 from content_extractor import get_content
+from content_cleaner import clean_content
 
 
 def setup_storage(data_dir: str, raw_dir: str, clean_dir: str) -> None: 
@@ -54,12 +55,15 @@ if __name__ == '__main__':
     links_list = links_df['se_link'].to_list()
 
     # 2. get content (and store)
-    content = get_content(links_list)
+    dirty_content = get_content(links_list)
 
-    content_df = pd.DataFrame(content)
-    content_df = pd.merge(links_df, content_df, left_on='se_link', right_on='bs_link')
+    dirty_content = pd.DataFrame(dirty_content)
+    dirty_content = pd.merge(links_df, dirty_content, left_on='se_link', right_on='bs_link')
 
     filename = f'{RAW_DIR}/{args.company.strip().replace(" ", "")}_{datetime.now()}.csv'
-    content_df.to_csv(filename, index=False)
+    dirty_content.to_csv(filename, index=False)
 
-    # TODO Clean data (and store)
+    # 3. clean content (and store)
+    clean_content = clean_content(dirty_content)
+    filename = f'{CLEAN_DIR}/{args.company.strip().replace(" ", "")}_{datetime.now()}.csv'
+    clean_content.to_csv(filename, index=False)
