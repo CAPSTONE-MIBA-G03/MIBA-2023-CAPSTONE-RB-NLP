@@ -529,7 +529,7 @@ def get_all_links(
 
     all_results = [results for sublist in engine_results for results in sublist]
     unique_results = list({v["se_link"]: v for v in all_results}.values())
-    LOGGER.info(f"Found {len(unique_results)} unique articles")
+    LOGGER.info(f"Found {len(unique_results)} unique articles out of {len(all_results)} total")
     return unique_results
 
 
