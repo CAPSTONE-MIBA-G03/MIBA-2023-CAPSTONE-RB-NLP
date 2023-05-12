@@ -17,8 +17,6 @@ from fake_useragent import UserAgent
 from requests import Session
 from requests.utils import unquote  # quote from requests breaks code
 
-#from requests.utils import quote, unquote
-
 # Anti-Scraping Measures
 UA = UserAgent(fallback="chrome")
 DELAY_RANGE = (1.0, 2.5)  # set a random delay between requests to avoid rate limiting
