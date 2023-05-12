@@ -1,10 +1,11 @@
-import pandas as pd
 import argparse
 import os
 
-from etl_pipeline.link_extractor import get_all_links
-from etl_pipeline.content_extractor import get_content
+import pandas as pd
+
 from etl_pipeline.content_cleaner import clean_content
+from etl_pipeline.content_extractor import get_content
+from etl_pipeline.link_extractor import get_all_links
 
 
 class PipelineExecutor:
@@ -83,7 +84,7 @@ class PipelineExecutor:
             return pd.read_csv(clean_filename)
 
         # 1. get links
-        links = get_all_links(query==query, max_articles=max_articles)
+        links = get_all_links(query=query, max_articles=max_articles)
 
         links_df = pd.DataFrame(links)
         links_df = links_df[~links_df['se_link'].isna()]

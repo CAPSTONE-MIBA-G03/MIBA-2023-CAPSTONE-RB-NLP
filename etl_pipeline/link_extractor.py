@@ -7,7 +7,7 @@ import re
 import time
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import quote  # unquote from urllib breaks code
+from urllib.parse import quote_plus  # unquote from urllib breaks code
 from urllib.request import Request, urlopen
 
 import arrow
@@ -120,7 +120,7 @@ class Google(SearchEngines):
         >>> links = google.get_links(max_articles=50)
         """
         query_params = {
-            "q": quote(self.query),  # Enables search to have spaces
+            "q": quote_plus(self.query),  # Enables search to have spaces
             "hl": "en",
             "tbm": "nws",
             "gl": self.country,
@@ -277,7 +277,7 @@ class Bing(SearchEngines):
             if num_results >= 211:
                 break
             # define full search url
-            search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={quote(self.query)}&first={num_results}{date_range}"  # specify lang parameter still todo
+            search = f"{Bing.ROOT}news/infinitescrollajax?cc={self.country}&InfiniteScroll=1&q={quote_plus(self.query)}&first={num_results}{date_range}"  # specify lang parameter still todo
 
             with Session() as session:
                 req = Request(search, headers={"User-Agent": UA.random})
@@ -393,7 +393,7 @@ class Yahoo(SearchEngines):
             date_range = ""
 
         # define full search url
-        search = f"{Yahoo.ROOT}search?p={quote(self.query)}&fr=news&country={self.country}{date_range}&lang=en-US"
+        search = f"{Yahoo.ROOT}search?p={quote_plus(self.query)}&fr=news&country={self.country}{date_range}&lang=en-US"
 
         # define loop variables
         results = []
