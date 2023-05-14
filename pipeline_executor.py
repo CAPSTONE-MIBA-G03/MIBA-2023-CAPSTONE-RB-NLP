@@ -57,7 +57,7 @@ class PipelineExecutor:
             os.mkdir(self.clean_dir)
 
     # main methods
-    def execute(self, query, max_articles=1):
+    def execute(self, query, max_articles=1, overwrite=False):
         '''
         Executes the pipeline for a given query and returns the clean content as a dataframe
         
@@ -67,6 +67,8 @@ class PipelineExecutor:
             The query to be searched for
         max_articles : int
             The maximum number of articles to be extracted
+        overwrite : bool
+            Whether to overwrite existing files or not
         
         Returns
         -------
@@ -80,7 +82,7 @@ class PipelineExecutor:
         clean_filename = build_filename(self.clean_dir)
 
         # return if file with [query] already exists
-        if os.path.exists(clean_filename):
+        if os.path.exists(clean_filename) and not overwrite:
             return pd.read_csv(clean_filename)
 
         # 1. get links
