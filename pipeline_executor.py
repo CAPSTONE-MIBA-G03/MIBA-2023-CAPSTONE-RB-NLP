@@ -57,7 +57,7 @@ class PipelineExecutor:
             os.mkdir(self.clean_dir)
 
     # main methods
-    def execute(self, query, max_articles=1, overwrite=False):
+    def execute(self, query, max_articles=None, overwrite=False):
         '''
         Executes the pipeline for a given query and returns the clean content as a dataframe
         
@@ -118,7 +118,7 @@ if __name__ == '__main__':
                         description='Script to execute article extraction pipeline')
 
     parser.add_argument('-q', '--query', default='Credit Suisse')
-    parser.add_argument('-x', '--max-articles', type=int, default=1)
+    parser.add_argument('-x', '--max-articles', type=int, default=None)
 
     args = parser.parse_args()
 
