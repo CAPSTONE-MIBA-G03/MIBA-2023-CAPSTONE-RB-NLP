@@ -33,7 +33,7 @@ def extract_entities(df, w1 : int, w2: int, top_n: int):
 
     # Adding a column with organizations for each title, body and description
     for col in ['title', 'body', 'se_description']:
-        df.loc[:,col+'_orgs'] = df[col].apply(lambda x: get_organizations(x) if type(x) == str else [])
+        df = df.assign(**{col+'_orgs': df[col].apply(lambda x: get_organizations(x) if type(x) == str else [])})
 
     all_orgs = df['title_orgs'].explode().tolist() * w1 + df['se_description_orgs'].explode().tolist() * w2 + df['body_orgs'].explode().tolist()
     all_orgs = [org for org in all_orgs if type(org) != float]
