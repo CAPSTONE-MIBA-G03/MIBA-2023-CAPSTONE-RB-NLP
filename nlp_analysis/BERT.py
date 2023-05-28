@@ -1,8 +1,10 @@
 import torch
-from transformers import BertTokenizer, BertModel
 from nltk.tokenize import sent_tokenize
+from transformers import BertModel, BertTokenizer
+
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 from transformers import logging
+
 logging.set_verbosity_error()
 
 
@@ -13,6 +15,17 @@ def insert_sep_token(text):
 
 
 def bert_embed_text(text):
+
+    # Setup device agnostic code (Chooses NVIDIA or Metal backend if available, otherwise defaults to CPU)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        
+    else:
+        device = torch.device("cpu")
+
     # if the input is not a string, return an empty list
     if type(text) != str:
         return []
@@ -33,10 +46,10 @@ def bert_embed_text(text):
         if value == "[SEP]":
             current_segment_id = 1 - current_segment_id
 
-    tokens_tensor = torch.tensor([indexed_tokens])
-    segments_tensors = torch.tensor([segments_ids])
+    tokens_tensor = torch.tensor([indexed_tokens]).to(device)
+    segments_tensors = torch.tensor([segments_ids]).to(device)
 
-    model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True) # output all hidden states
+    model = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True).to(device) # output all hidden states
     model.eval()
 
     with torch.no_grad():
