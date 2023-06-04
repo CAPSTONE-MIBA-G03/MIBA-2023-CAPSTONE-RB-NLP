@@ -119,25 +119,13 @@ class Autoencoder(nn.Module):
         super(Autoencoder, self).__init__()
         self.encode = nn.Sequential(
             nn.Linear(input_shape, hidden_units[0]),
-            # nn.Dropout(dropout_rate),
-            # nn.Linear(hidden_units[0], hidden_units[1]),
-            # nn.Tanh(),
-            # nn.Dropout(dropout_rate),
-            # nn.Linear(hidden_units[1], hidden_units[2]),
-            # nn.Tanh(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_units[0], hidden_units[3]),
+            nn.Tanh(),
+            nn.Linear(hidden_units[0], hidden_units[1]),
         )
 
         self.decode = nn.Sequential(
-            nn.Linear(hidden_units[3], hidden_units[0]),
-            nn.Dropout(dropout_rate),
-            # nn.Linear(hidden_units[2], hidden_units[1]),
-            # nn.Tanh(),
-            # nn.Dropout(dropout_rate),
-            # nn.Linear(hidden_units[1], hidden_units[0]),
-            # nn.Tanh(),
-            # nn.Dropout(dropout_rate),
+            nn.Linear(hidden_units[1], hidden_units[0]),
+            nn.Tanh(),
             nn.Linear(hidden_units[0], output_shape),
         )
 
