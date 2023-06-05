@@ -14,7 +14,7 @@ def insert_sep_token(text):
     return text_with_sep
 
 
-def bert_embed_text(text):
+def bert_embed_words(text):
 
     # Setup device agnostic code (Chooses NVIDIA or Metal backend if available, otherwise defaults to CPU)
     if torch.cuda.is_available():

@@ -18,8 +18,8 @@ def extract_entities(df, w1 : int, w2: int, top_n: int):
                 {'label': 'NORG', 'pattern': 'AI'},
                 {'label': 'NORG', 'pattern': 'Company'},
                 {'label': 'NORG', 'pattern': 'quantum computing'},
-                {'label': 'NCORG', 'pattern': 'NYSE'}, # not quantum orgs
-                {'label': 'NCORG', 'pattern': 'NASDAQ'}]
+                {'label': 'NQORG', 'pattern': 'NYSE'}, # not quantum orgs
+                {'label': 'NQORG', 'pattern': 'NASDAQ'}]
 
     # adding the patterns to the nlp model, if it is not already there
     if 'entity_ruler' not in nlp.pipe_names:
