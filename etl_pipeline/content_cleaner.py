@@ -66,12 +66,8 @@ def clean_content(df_dirty):
     df_clean.loc[df_clean['se_title_len'] > df_clean['title_len'], 'title'] = df_clean['se_title']
 
     # Dropping the columns that are not needed anymore
-    df_clean.drop(['n3k_title', 'n3k_body', 'bs_title', 'bs_body', 'n3k_body_len', 'bs_body_len',
+    df_clean.drop(['n3k_title', 'n3k_body', 'bs_title', 'bs_body', 'n3k_body_len', 'bs_body_len', 'bs_paragraph',
                 'n3k_title_len', 'bs_title_len', 'se_title_len', 'se_title', 'title_len'], axis=1, inplace=True)
-
-
-    # renaming the bs_paragraph column to paragraph
-    df_clean.rename(columns={'bs_paragraph': 'paragraph'}, inplace=True)
 
     # Dropping all rows that have no title, body or paragraph
     df_clean.dropna(subset=['title', 'body', 'paragraph'], inplace=True)
