@@ -98,15 +98,15 @@ def _process_with_bs(url):
     df_groupby_parent_hierarchy_sum = df_groupby_parent_hierarchy[["element_text_count"]].sum()
     df_groupby_parent_hierarchy_sum.reset_index(inplace=True)
 
-    # 4. count paragraphs length
+    # 4. select the parent hierarchy with the most text
     maxid = df_groupby_parent_hierarchy_sum.loc[df_groupby_parent_hierarchy_sum["element_text_count"].idxmax(),"parent_hierarchy",]
 
-    # 5. select the longest paragraph as the main article
+    # 5. concatenate all paragraphs under the maxid parent hierarchy (the one with the most text)
     body_list = p_blocks_df.loc[p_blocks_df["parent_hierarchy"] == maxid, "element_text"].to_list()
     body_list.reverse()
     body = "\n".join(body_list)
 
-    return {"url": url, "title": title, "body": body}
+    return {"url": url, "title": title, "body": body, "paragraph": body_list}
 
 
 def _process_with_n3k(article):
@@ -140,6 +140,7 @@ def _process_article(url, n3k_article):
             "bs_link": bs_article["url"],
             "bs_title": bs_article["title"],
             "bs_body": bs_article["body"],
+            "bs_paragraph": bs_article["paragraph"],
         }
     )
 
