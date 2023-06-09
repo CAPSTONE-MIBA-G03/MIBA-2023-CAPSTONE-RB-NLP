@@ -91,6 +91,10 @@ class Google(SearchEngines):
     --------
     >>> from etl_pipeline.link_extractor import Google
     >>> google = Google(query="Tesla")
+
+    References
+    -----
+    Inspired by and adapted from https://www.youtube.com/watch?v=Ikf6Xdox0Go
     """
 
     ROOT = "https://www.google.com/"

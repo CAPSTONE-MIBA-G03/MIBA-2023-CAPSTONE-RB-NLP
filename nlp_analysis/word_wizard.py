@@ -5,6 +5,7 @@ from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from tqdm import tqdm
 from transformers import (AutoModelForTokenClassification, AutoTokenizer,
                           BartModel, BartTokenizer, BertModel, BertTokenizer,
@@ -41,10 +42,6 @@ class WordWizard:
         else:
             self.device = "cpu"
 
-        # This code block should be in the ETL pipeline NOT in this nlp pipe
-        self.df["paragraph"] = self.df["body"].str.split("\n\n")
-        self.df = self.df.explode("paragraph", ignore_index=False)
-        self.df = self.df.reset_index(names="para_index")
         self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
 
 
@@ -105,7 +102,7 @@ class WordWizard:
         return self
 
     def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1):
-        '''
+        """
         Clusters the word embeddings of a column in the dataframe.
         
         Parameters
@@ -132,7 +129,7 @@ class WordWizard:
         References
         ----------
         https://www.kaggle.com/sonalidasgupta/clustering-using-bert-embeddings
-        '''
+        """
 
         sil = []
         K = range(2, k_upperbound)
@@ -145,14 +142,22 @@ class WordWizard:
 
         n_clusters = range(max(2, optimal_k - extra_clusters), optimal_k + extra_clusters + 1)  # adding/subtracting extra_clusters
         for n in n_clusters:
-            kmeans = KMeans(n_clusters=n)
+            kmeans = KMeans(n_clusters=n, n_init="auto")
             kmeans.fit(self.df[column].tolist())
-            self.df[column + 'cluster' + str(n)] = kmeans.labels_
+            new_column = column + '_cluster_' + str(n)
+            self.df[new_column] = kmeans.labels_
+            
+            # Finding Medoids (hard to implement as standalone method because kmeans is instantiated in this method)
+            centroids = kmeans.cluster_centers_
+            closest_medoid_indices, _ = pairwise_distances_argmin_min(self.df[column].tolist(), centroids)
+            self.df[new_column + "_is_medoid"] = False
+            self.df.loc[closest_medoid_indices, new_column + "_is_medoid"] = True        
 
         return self
 
     def find_medoids(self, columns):
         pass
+
 
     def find_sentiment(self, columns: list([str]), device=None):
 
