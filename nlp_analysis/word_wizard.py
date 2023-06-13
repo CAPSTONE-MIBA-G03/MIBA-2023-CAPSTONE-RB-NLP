@@ -30,6 +30,14 @@ class WordWizard:
     >>> pipe = WordWizard(df = df)
     """
 
+    # Class variables
+    EMB_SUFFIX = '_word_embeddings'
+    SENT_EMB_SUFFIX = '_sentence_embeddings'
+    CLUSTER_SUFFIX = '_cluster_'
+    SENTIMENT_SUFFIX = '_sentiment'
+    NER_SUFFIX = '_NER'
+    MEDOID_SUFFIX = '_is_medoid'
+
     def __init__(self, df) -> None:
         self.df = df.copy().reset_index(drop=True)
         # Setup device agnostic code (Chooses NVIDIA (most optimized) or Metal backend (still better than cpu) if available, otherwise defaults to CPU)
@@ -60,7 +68,7 @@ class WordWizard:
         model.eval()
 
         for column in tqdm(columns, desc=f"Creating embeddings for column(s): {columns}", leave=True):
-            new_column_name = column + "_word_embeddings"
+            new_column_name = column + self.EMB_SUFFIX
             self.df[new_column_name] = None
 
             unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
@@ -102,61 +110,44 @@ class WordWizard:
         return self
 
     def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1):
-        """
-        Clusters the word embeddings of a column in the dataframe.
         
-        Parameters
-        ----------
-        column : str
-            The column name of the dataframe to cluster.
-        k_upperbound : int
-            The upperbound of the range of k values to test for the optimal number of clusters.
-        extra_clusters : int
-            The number of extra clusters to add/subtract from the optimal number of clusters.
-
-        Examples
-        --------
-        >>> from nlp_analysis import WordWizard
-        >>> pipe = WordWizard(df = df)
-        >>> pipe.create_word_embeddings(columns = ["body"])
-        >>> pipe.cluster_embeddings(column = "body_word_embeddings")
-        >>> pipe.df.head()
-
-        Notes
-        -----
-        This method uses the elbow method to find the optimal number of clusters.
-
-        References
-        ----------
-        https://www.kaggle.com/sonalidasgupta/clustering-using-bert-embeddings
-        """
-
-        sil = []
+        # Define main variables
+        kmeans = {}
         K = range(2, k_upperbound)
+        sil = []
+
+        # Calculate Silhouette Score for each K
         for k in K:
-            kmeans = KMeans(n_clusters=k).fit(self.df[column].tolist())
-            labels = kmeans.labels_
+            kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())
+            labels = kmeans[k].labels_
             sil.append(silhouette_score(self.df[column].tolist(), labels, metric='euclidean'))
 
+        # Find optimal K
         optimal_k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
 
+        print(f"Optimal K: {optimal_k}")
+
+        # Cluster with optimal K and extra_clusters
         n_clusters = range(max(2, optimal_k - extra_clusters), optimal_k + extra_clusters + 1)  # adding/subtracting extra_clusters
-        for n in n_clusters:
-            kmeans = KMeans(n_clusters=n, n_init="auto")
-            kmeans.fit(self.df[column].tolist())
-            new_column = column + '_cluster_' + str(n)
-            self.df[new_column] = kmeans.labels_
+
+        # Add clusters to dataframe
+        for k in n_clusters:
+
+            # Train KMeans model if not already trained
+            if k not in kmeans:
+                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())
+
+            # Add cluster labels to dataframe
+            new_column = column + self.CLUSTER_SUFFIX + str(k)
+            self.df[new_column] = kmeans[k].labels_
             
             # Finding Medoids (hard to implement as standalone method because kmeans is instantiated in this method)
-            centroids = kmeans.cluster_centers_
+            centroids = kmeans[k].cluster_centers_
             closest_medoid_indices, _ = pairwise_distances_argmin_min(self.df[column].tolist(), centroids)
-            self.df[new_column + "_is_medoid"] = False
+            self.df[new_column + self.MEDOID_SUFFIX] = False
             self.df.loc[closest_medoid_indices, new_column + "_is_medoid"] = True        
 
         return self
-
-    def find_medoids(self, columns):
-        pass
 
 
     def find_sentiment(self, columns: list([str]), device=None):
@@ -171,7 +162,7 @@ class WordWizard:
         model.eval()
 
         for column in tqdm(columns, desc=f"Calculating Sentiment for column(s): {columns}", leave=True):
-            new_column_name = column + "_sentiment"
+            new_column_name = column + self.SENTIMENT_SUFFIX
             self.df[new_column_name] = None
 
             texts = self.df[column].tolist()
@@ -202,7 +193,7 @@ class WordWizard:
             model = AutoModelForTokenClassification.from_pretrained("dslim/bert-large-NER")
 
         for column in tqdm(columns, desc=f"Creating embeddings for column: {columns}", leave=True):
-            new_column_name = column + "_NER"
+            new_column_name = column + self.NER_SUFFIX
             self.df[new_column_name] = None
 
             texts = self.df[column].tolist()
