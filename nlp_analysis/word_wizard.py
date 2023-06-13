@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
+
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
@@ -109,21 +111,49 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1):
-        
+    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette'):
         # Define main variables
         kmeans = {}
         K = range(2, k_upperbound)
-        sil = []
+        column = column + self.EMB_SUFFIX
 
-        # Calculate Silhouette Score for each K
-        for k in K:
-            kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())
-            labels = kmeans[k].labels_
-            sil.append(silhouette_score(self.df[column].tolist(), labels, metric='euclidean'))
+        # Determine optimal K
+        if method == 'silhouette':
+            sil = []
 
-        # Find optimal K
-        optimal_k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
+            # Calculate Silhouette Score for each K
+            for k in K:
+                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())
+                labels = kmeans[k].labels_
+                sil.append(silhouette_score(self.df[column].tolist(), labels, metric='euclidean'))
+
+            # Find optimal K
+            optimal_k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
+        
+        elif method == 'elbow':
+            # ssd = sum of squared distances
+            ssd = []
+
+            # Calculate sum of squared distances for each K
+            for k in K:
+                model = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())
+                ssd.append(model.inertia_)
+
+            # Plot sum of squared distances
+            plt.plot(K, ssd, 'bx-')
+            plt.xlabel('k')
+            plt.ylabel('Sum of squared distances')
+            plt.title('Elbow Method For Optimal k')
+            plt.show()
+
+            # Ask user for optimal K
+            try:
+                optimal_k = int(input("Enter the optimal number of clusters (based on the plot): "))
+            except ValueError:
+                raise ValueError("Invalid input. Please enter an integer.")
+       
+        else:
+            raise ValueError("Invalid method. Choose 'silhouette' or 'elbow'.")
 
         print(f"Optimal K: {optimal_k}")
 
