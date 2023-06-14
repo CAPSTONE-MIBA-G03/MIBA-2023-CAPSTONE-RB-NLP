@@ -8,6 +8,7 @@ from etl_pipeline.content_extractor import get_content
 from etl_pipeline.link_extractor import get_all_links
 
 
+
 class PipelineExecutor:
     '''
     Class to execute the pipeline for a given query
