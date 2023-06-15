@@ -31,20 +31,20 @@ def clean_content(df):
         df_dirty[col] = df_dirty[col].str.replace(r"\n|\t| +", " ", regex=True).str.strip()
 
     # Replace all entries except bodies which contain unwanted words with empty strings for later removal
-    unwanted_words = [
-        "javascript", "cookie", "cookies", "explorer", "are you a robot", "robot", "subscribe",
+    undesireable_phrases = [
+        "javascript", "cookie", "cookies", "explorer", "are you a robot", "subscribe",
         "register", "login", "sign in", "sign up", "log in", "sign out", "log out", "privacy",
         "terms", "contact", "about", "help", "feedback", "careers", "advertise", "rate us", 
-        "subscribe to unlock", "give us feedback", "free download", "All rights reserved", "©",
-        "About us", "Contact us", "Privacy Policy",
+        "subscribe to unlock", "give us feedback", "free download", "all rights reserved", "©",
+        "about us", "contact us", "privacy policy",
         ]
     
     # Check if the paragraph contains any of the unwanted words and replace as empty string for later removal
-    df_dirty.loc[df_dirty["n3k_title"].str.contains("|".join(unwanted_words), case=False), "n3k_title"] = np.nan
-    df_dirty.loc[df_dirty["bs_title"].str.contains("|".join(unwanted_words), case=False), "bs_title"] = np.nan
-    df_dirty.loc[df_dirty["se_title"].str.contains("|".join(unwanted_words), case=False), "se_title"] = np.nan
-    df_dirty.loc[df_dirty["paragraph"].str.contains("|".join(unwanted_words), case=False), "paragraph"] = np.nan
-    df_dirty.loc[df_dirty["description"].str.contains("|".join(unwanted_words), case=False), "description"] = np.nan
+    df_dirty.loc[df_dirty["n3k_title"].str.contains("|".join(undesireable_phrases), case=False), "n3k_title"] = np.nan
+    df_dirty.loc[df_dirty["bs_title"].str.contains("|".join(undesireable_phrases), case=False), "bs_title"] = np.nan
+    df_dirty.loc[df_dirty["se_title"].str.contains("|".join(undesireable_phrases), case=False), "se_title"] = np.nan
+    df_dirty.loc[df_dirty["paragraph"].str.contains("|".join(undesireable_phrases), case=False), "paragraph"] = np.nan
+    df_dirty.loc[df_dirty["description"].str.contains("|".join(undesireable_phrases), case=False), "description"] = np.nan
 
     # Replace entries which are too short as empty string for later removal
     df_dirty.loc[df_dirty["n3k_title"].str.len() < 20, "n3k_title"] = np.nan

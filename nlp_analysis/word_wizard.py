@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-
 from bertopic import BERTopic
 from bertopic.representation import KeyBERTInspired
 from nltk.tokenize import sent_tokenize
@@ -11,12 +10,15 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from tqdm.auto import tqdm
+
+tqdm.pandas()
 import transformers
 from transformers import (AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
                           BartModel, BartTokenizer, BertModel, BertTokenizer,
                           DistilBertForSequenceClassification,
                           DistilBertTokenizer, pipeline)
+
 
 class WordWizard:
     """
@@ -101,19 +103,13 @@ class WordWizard:
 
         return self
 
-    def create_sentence_embeddings(self, device=None):
+    def create_sentence_embeddings(self, column="sentences" ,device=None):
         # Testing for now shows that cpu is faster than gpu for this task, thus added device option
         if device:
             self.device = device
 
         model = SentenceTransformer("all-MiniLM-L6-v2", device=self.device)
-
-        self.df["body_sentence_embeddings"] = None
-
-        paragraphs = self.df["sentences"].tolist()
-        for i, sentences in enumerate(tqdm(paragraphs, desc="Embedding body sentences", leave=False)):
-            embedding = model.encode(sentences, device=self.device)
-            self.df.at[i, "body_sentence_embeddings"] = embedding.mean(axis=0)
+        self.df[column + self.SENT_EMB_SUFFIX] = self.df[column].progress_apply(lambda sentences: model.encode(sentences, device=self.device).mean(axis=0))
 
         return self
 
