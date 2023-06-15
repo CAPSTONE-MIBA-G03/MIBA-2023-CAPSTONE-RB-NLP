@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+
+from bertopic import BERTopic
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
@@ -306,4 +308,34 @@ class WordWizard:
         return self
 
     def topic_modelling(self, column):
-        pass
+        """
+        Performs topic modelling on the specified column using pre-generated BERT embeddings.
+        
+        Parameters:
+        column (str): Name of the dataframe column to perform topic modelling on.
+        """
+
+        # Assume embeddings column is the column name plus "_word_embeddings"
+        emb_column = column + self.EMB_SUFFIX
+        
+        # Check if embeddings exist
+        if emb_column not in self.df.columns:
+            raise ValueError(f"Embeddings for column {column} not found. Please run 'create_word_embeddings' first.")
+        
+        # Get embeddings
+        embeddings = np.array(self.df[emb_column].tolist())
+        
+        # Run BERTopic
+        topic_model = BERTopic(verbose=True)
+        topics, _ = topic_model.fit_transform(self.df[column], embeddings)
+
+        # Create a mapping of topic id to words
+        topic_id_to_words = {topic_id: topic_model.get_topic(topic_id) for topic_id in set(topics)}
+
+        # Add topic labels and words to dataframe
+        self.df[column + '_topic_id'] = topics
+        self.df[column + '_topic_words'] = self.df[column + '_topic_id'].map(topic_id_to_words)
+        
+        print(f"Topic labels and words added to dataframe columns: {column + '_topic_id'}, {column + '_topic_words'}")
+        
+        return topic_model
