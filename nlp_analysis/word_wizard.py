@@ -13,7 +13,8 @@ from tqdm.auto import tqdm
 
 tqdm.pandas()
 import transformers
-from transformers import (AutoModelForSequenceClassification,
+from transformers import (AutoModelForSeq2SeqLM,
+                          AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
                           BartModel, BartTokenizer, BertModel, BertTokenizer,
                           DistilBertForSequenceClassification,
@@ -65,8 +66,8 @@ class WordWizard:
         self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
 
     def create_word_embeddings(self, column: str, lean=True, device=None):
-        if device:
-            self.device = device
+        if not device:
+            device = self.device
 
         if lean:
             tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
@@ -75,19 +76,19 @@ class WordWizard:
             tokenizer = BertTokenizer.from_pretrained("bert-large-cased")
             model = BertModel.from_pretrained("bert-large-cased", output_hidden_states=True)
 
-        model.to(self.device)
+        model.to(device)
         model.eval()
 
         new_column_name = column + self.EMB_SUFFIX
-        self.df[new_column_name] = None
+        self.df[new_column_name] = np.nan
 
         unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
-        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for:{column}")):
+        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for column {column}")):
 
             text = self.df.at[pos, column]
 
             encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
-            encoded_input.to(self.device)
+            encoded_input.to(device)
 
             with torch.inference_mode():
                 outputs = model(**encoded_input)
@@ -105,11 +106,11 @@ class WordWizard:
 
     def create_sentence_embeddings(self, column="sentences" ,device=None):
         # Testing for now shows that cpu is faster than gpu for this task, thus added device option
-        if device:
-            self.device = device
+        if not device:
+            device = self.device
 
-        model = SentenceTransformer("all-MiniLM-L6-v2", device=self.device)
-        self.df[column + self.SENT_EMB_SUFFIX] = self.df[column].progress_apply(lambda sentences: model.encode(sentences, device=self.device).mean(axis=0))
+        model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
+        self.df[column + self.SENT_EMB_SUFFIX] = self.df[column].progress_apply(lambda sentences: model.encode(sentences, device=device).mean(axis=0))
 
         return self
 
@@ -123,7 +124,10 @@ class WordWizard:
         # Define main variables
         kmeans = {}
         K = range(2, k_upperbound)
-        column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
+        if column == 'sentences':
+            column = column + self.SENT_EMB_SUFFIX
+        else:
+            column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
 
         # Determine optimal K
         if method == None:
@@ -196,7 +200,48 @@ class WordWizard:
         #self.df = self.df.merge(df[['article_index', new_column, new_column + self.MEDOID_SUFFIX]], on='article_index', how='left')    
         return self
 
-    def summarize_medoids(self, column: str):
+    def summarize_medoids(self, column: str, lean=True, device=None):
+
+        if not device:
+            device = self.device
+
+        if lean:
+            tokenizer = AutoTokenizer.from_pretrained("google/pegasus-cnn_dailymail")
+            model = AutoModelForSeq2SeqLM.from_pretrained("google/pegasus-cnn_dailymail")
+        else:
+            tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
+            model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
+
+        model.to(device)
+
+        new_column_name = column + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
+        
+        if column == 'sentences':
+            medoid = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
+            new_column_name = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
+        else:
+            medoid = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
+            new_column_name = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
+
+        self.df[new_column_name] = np.nan
+
+        medoid_indices = self.df.loc[self.df[medoid] == True].index.tolist()
+        for i, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
+
+            text = self.df.at[pos, column]
+
+            encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+            encoded_input.to(device)
+
+            with torch.inference_mode():
+                summary = model.generate(**encoded_input)
+                out = tokenizer.decode(summary[0], skip_special_tokens=True, clean_up_tokenization_spaces=True)
+            
+            self.df.at[pos, new_column_name] = out
+
+        return self
+
+
         summarizer = transformers.pipeline("summarization", model="facebook/bart-large-cnn")
         tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
         medoids = self.df[self.df[column + '_word_embeddings_clusters' + self.MEDOID_SUFFIX] == True] # body_word_embeddings_clusters_medoids
@@ -243,25 +288,25 @@ class WordWizard:
         >>> pipe.df["body_sentiment"].head()
         """
 
-        if device:
-            self.device = device
+        if not device:
+            device = self.device
 
         tokenizer = AutoTokenizer.from_pretrained("siebert/sentiment-roberta-large-english")
         model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english")
 
-        model.to(self.device)
+        model.to(device)
         model.eval()
 
         new_column_name = column + self.SENTIMENT_SUFFIX
-        self.df[new_column_name] = None
+        self.df[new_column_name] = np.nan
 
         unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
-        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for:{column}")):
+        for i, pos in enumerate(tqdm(unique_indices, desc=f"Calculating sentiment for column {column}")):
 
             text = self.df.at[pos, column]
 
             encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
-            encoded_input.to(self.device)
+            encoded_input.to(device)
 
             with torch.inference_mode():
                 outputs = model(**encoded_input).logits
@@ -278,8 +323,8 @@ class WordWizard:
     
     
     def entitiy_recognition(self, columns: list([str]), lean=True, device=None):
-        if device:
-            self.device = device
+        if not device:
+            device = self.device
         
         if lean:
             tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
