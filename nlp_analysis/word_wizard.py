@@ -280,6 +280,7 @@ class WordWizard:
 
         return self
     
+    
     def entitiy_recognition(self, columns: list([str]), lean=True, device=None):
         if device:
             self.device = device
