@@ -169,8 +169,6 @@ class WordWizard:
         else:
             raise ValueError("Invalid method. Choose 'silhouette' or 'elbow'.")
 
-        print(f"Optimal K: {optimal_k}")
-
         kmeans = KMeans(n_clusters=optimal_k, n_init='auto').fit(df[column].tolist())
         new_column = column + self.CLUSTER_SUFFIX # e.g.: paragraph_word_embeddings_cluster_5
         
@@ -335,7 +333,5 @@ class WordWizard:
         # Add topic labels and words to dataframe
         self.df[column + '_topic_id'] = topics
         self.df[column + '_topic_words'] = self.df[column + '_topic_id'].map(topic_id_to_words)
-        
-        print(f"Topic labels and words added to dataframe columns: {column + '_topic_id'}, {column + '_topic_words'}")
-        
+                
         return topic_model
