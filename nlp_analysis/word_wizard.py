@@ -8,12 +8,12 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from tqdm.auto import tqdm
+import transformers
 from transformers import (AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
                           BartModel, BartTokenizer, BertModel, BertTokenizer,
                           DistilBertForSequenceClassification,
                           DistilBertTokenizer, pipeline)
-
 
 class WordWizard:
     """
@@ -40,6 +40,7 @@ class WordWizard:
     SENTIMENT_SUFFIX = '_sentiment'
     NER_SUFFIX = '_NER'
     MEDOID_SUFFIX = '_medoids'
+    SUMMARY_SUFFIX = '_summaries'
 
     def __init__(self, df, device=None) -> None:
         self.df = df.copy().reset_index(drop=True)
@@ -113,9 +114,10 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette'):
+    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method=None, k=5, n_med=2):
         if column == 'body':
-            df = self.df[~self.df['paragraph_index'].duplicated()]
+            # getting unique articles
+            df = self.df[~self.df['article_index'].duplicated()]
         else:
             df = self.df
 
@@ -125,7 +127,10 @@ class WordWizard:
         column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
 
         # Determine optimal K
-        if method == 'silhouette':
+        if method == None:
+            optimal_k = k
+
+        elif method == 'silhouette':
             sil = []
 
             # Calculate Silhouette Score for each K
@@ -176,76 +181,50 @@ class WordWizard:
         for i, centroid in enumerate(centroids):
             points_in_cluster = df[df[new_column] == i][column]
             distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
-            closest_index = distances.nsmallest(3).index
-            df.loc[closest_index, new_column + self.MEDOID_SUFFIX] = True
-        
+            closest_indices = distances.nsmallest(n_med).index
+            df.loc[closest_indices, new_column + self.MEDOID_SUFFIX] = True
+            
         # filling the initial df (self.df)
         for i, pos in enumerate(df.index):
+            # if the current index is the last index in df, fill the rest of the df
             if i + 1 == len(df.index):
                 self.df.loc[pos:, new_column] = df.loc[pos:, new_column]
                 self.df.loc[pos:, new_column + self.MEDOID_SUFFIX] = df.loc[pos:, new_column + self.MEDOID_SUFFIX]
-
+            # else, fill the df until the next index
             else:
                 next_index = df.index[i + 1]
                 self.df.loc[pos:next_index - 1, new_column] = df.loc[pos:next_index - 1, new_column]
                 self.df.loc[pos:next_index - 1, new_column + self.MEDOID_SUFFIX] = df.loc[pos:next_index - 1, new_column + self.MEDOID_SUFFIX]
-
-
-        """
-        # Cluster with optimal K and extra_clusters
-        n_clusters = range(max(2, optimal_k - extra_clusters), optimal_k + extra_clusters + 1)  # adding/subtracting extra_clusters
-
-        # Add clusters to dataframe
-        for k in range(optimal_k): # instead of "for k in n_clusters:"
-
-            '''# Train KMeans model if not already trained
-            if k not in kmeans:
-                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(self.df[column].tolist())'''
-
-            kmeans = KMeans(n_clusters=optimal_k, n_init='auto').fit(self.df[column].tolist())
-
-            # Add cluster labels to dataframe
-            new_column = column + self.CLUSTER_SUFFIX + str()
-            self.df[new_column] = kmeans.labels_
-            
-            # Finding Medoids (hard to implement as standalone method because kmeans is instantiated in this method)
-            centroids = kmeans[k].cluster_centers_
-            closest_medoid_indices, _ = pairwise_distances_argmin_min(self.df[column].tolist(), centroids)
-            self.df[new_column + self.MEDOID_SUFFIX] = False
-            self.df.loc[closest_medoid_indices, new_column + "_is_medoid"] = True
-        """        
-
+        
+        #self.df = self.df.merge(df[['article_index', new_column, new_column + self.MEDOID_SUFFIX]], on='article_index', how='left')    
         return self
 
-    def summarize_medoids(self):
-        '''article = articles.at[i, 'body']
+    def summarize_medoids(self, column: str):
+        summarizer = transformers.pipeline("summarization", model="facebook/bart-large-cnn")
+        tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+        medoids = self.df[self.df[column + '_word_embeddings_clusters' + self.MEDOID_SUFFIX] == True] # body_word_embeddings_clusters_medoids
+        self.df[column + self.SUMMARY_SUFFIX] = None
+        for pos in medoids.index:
+            entry = medoids.loc[pos, column]
+            if type(entry) != str:
+                summary = 'summarized entry was no string'
+            tokenized_input = tokenizer.tokenize(entry)
+            if len(tokenized_input) > 1023: # max input size for BART
+                entry = ' '.join(tokenized_input[:1000]).replace(' ##', '')
+            try:
+                summary = summarizer(entry) # set max size (! >30)
 
-        if type(article) != str:
-            continue
+            except:
+                summary = 'could not summarize'
 
-        tokenized_input = tokenizer.tokenize(article)
-        
-        if len(tokenized_input) > 1023: # max input size for BART
-            article = ' '.join(tokenized_input[:1000]).replace(' ##', '')
-        
-        try:
-            summary = nlp(article) # set max size (! >30)
+            if type(summary) == list:
+                summary = summary[0]['summary_text']
 
-        except:
-            summary = ''
+            if type(summary) == dict:
+                summary = summary['summary_text']
 
-        if type(summary) == list:
-            summary = summary[0]['summary_text']
-        
-        if type(summary) == dict:
-            summary = summary['summary_text']
-        
-        articles.loc[i,'summary'] = summary
-
-        count += 1
-        
-        # if count % 5 == 0:
-        print(count, datetime.now().strftime("%H:%M:%S"))'''
+            self.df.loc[pos, column + self.SUMMARY_SUFFIX] = summary
+            
 
     def find_sentiment(self, column: str, device=None):
         """
