@@ -1,15 +1,15 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import matplotlib.pyplot as plt
-
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
-from tqdm import tqdm
-from transformers import (AutoModelForTokenClassification, AutoTokenizer,
+from tqdm.auto import tqdm
+from transformers import (AutoModelForSequenceClassification,
+                          AutoModelForTokenClassification, AutoTokenizer,
                           BartModel, BartTokenizer, BertModel, BertTokenizer,
                           DistilBertForSequenceClassification,
                           DistilBertTokenizer, pipeline)
@@ -23,8 +23,9 @@ class WordWizard:
     ----------
     df : pandas.DataFrame
         A pandas dataframe containing text data.
-    lean : bool
-        If True, aims to use a smaller BERT model (bert-base-cased) instead of the default (bert-large-cased).
+
+    device : str, optional
+        The device to use for the analysis. If not specified, the class will automatically choose the best possible device available.
 
     Examples
     --------
@@ -40,10 +41,13 @@ class WordWizard:
     NER_SUFFIX = '_NER'
     MEDOID_SUFFIX = '_is_medoid'
 
-    def __init__(self, df) -> None:
+    def __init__(self, df, device=None) -> None:
         self.df = df.copy().reset_index(drop=True)
         # Setup device agnostic code (Chooses NVIDIA (most optimized) or Metal backend (still better than cpu) if available, otherwise defaults to CPU)
-        if torch.cuda.is_available():
+        if device:
+            self.device = device
+
+        elif torch.cuda.is_available():
             self.device = "cuda"
 
         elif torch.backends.mps.is_available():
@@ -55,7 +59,7 @@ class WordWizard:
         self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
 
 
-    def create_word_embeddings(self, columns: list([str]), lean=True, device=None):
+    def create_word_embeddings(self, column: str, lean=True, device=None):
         if device:
             self.device = device
 
@@ -69,29 +73,28 @@ class WordWizard:
         model.to(self.device)
         model.eval()
 
-        for column in tqdm(columns, desc=f"Creating embeddings for column(s): {columns}", leave=True):
-            new_column_name = column + self.EMB_SUFFIX
-            self.df[new_column_name] = None
+        new_column_name = column + self.EMB_SUFFIX
+        self.df[new_column_name] = None
 
-            unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
-            for i, pos in enumerate(tqdm(unique_indices, leave=False)):
+        unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
+        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for:{column}")):
 
-                text = self.df.at[pos, column]
+            text = self.df.at[pos, column]
 
-                encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
-                encoded_input.to(self.device)
+            encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+            encoded_input.to(self.device)
 
-                with torch.inference_mode():
-                    outputs = model(**encoded_input)
-                    last_hidden_state = outputs.last_hidden_state
-                    embedding = torch.mean(last_hidden_state, dim=1).squeeze(0).cpu().numpy()
-                
-                if i + 1 == len(unique_indices):
-                    self.df.loc[pos:, new_column_name] = self.df.loc[pos:].apply(lambda _: embedding.tolist(), axis=1)
+            with torch.inference_mode():
+                outputs = model(**encoded_input)
+                last_hidden_state = outputs.last_hidden_state
+                embedding = torch.mean(last_hidden_state, dim=1).squeeze(0).cpu().numpy()
+            
+            if i + 1 == len(unique_indices):
+                self.df.loc[pos:, new_column_name] = self.df.loc[pos:].apply(lambda _: embedding.tolist(), axis=1)
 
-                else:
-                    next_index = unique_indices[i + 1]
-                    self.df.loc[pos:next_index - 1, new_column_name] = self.df.loc[pos:next_index - 1].apply(lambda _: embedding.tolist(), axis=1)
+            else:
+                next_index = unique_indices[i + 1]
+                self.df.loc[pos:next_index - 1, new_column_name] = self.df.loc[pos:next_index - 1].apply(lambda _: embedding.tolist(), axis=1)
 
         return self
 
@@ -180,36 +183,59 @@ class WordWizard:
         return self
 
 
-    def find_sentiment(self, columns: list([str]), device=None):
+    def find_sentiment(self, column: str, device=None):
+        """
+        Computes the sentiment score for the input column and adds a new column with the suffix '_sentiment.'
+
+        Parameters
+        ----------
+        column : {"title", "description", "body", "paragraphs", "sentences"}
+            The column to find the sentiment score for.
+
+        device : str, optional
+            The device to use for the model. If not specified, the default device is used.
+
+        Examples
+        --------
+        >>> from nlp_analysis import WordWizard
+        >>> pipe = WordWizard(df = df)
+        >>> pipe.find_sentiment(column = "body")
+        >>> pipe.df["body_sentiment"].head()
+        """
 
         if device:
             self.device = device
 
-        tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
-        model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased")
+        tokenizer = AutoTokenizer.from_pretrained("siebert/sentiment-roberta-large-english")
+        model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english")
 
         model.to(self.device)
         model.eval()
 
-        for column in tqdm(columns, desc=f"Calculating Sentiment for column(s): {columns}", leave=True):
-            new_column_name = column + self.SENTIMENT_SUFFIX
-            self.df[new_column_name] = None
+        new_column_name = column + self.SENTIMENT_SUFFIX
+        self.df[new_column_name] = None
 
-            texts = self.df[column].tolist()
-            for i, text in enumerate(tqdm(texts, leave=False)):
-                if (i != 0) and (self.df.at[i, "para_index"] == self.df.at[i - 1, "para_index"]) and (column != "paragraph"):
-                    self.df.at[i, new_column_name] = self.df.at[i - 1, new_column_name]
-                    continue
+        unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
+        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for:{column}")):
 
-                encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
-                encoded_input.to(self.device)
+            text = self.df.at[pos, column]
 
-                with torch.inference_mode():
-                    logits = model(**encoded_input).logits
-                    sentiment = logits.argmax().item()
-                    self.df.at[i, new_column_name] = sentiment
+            encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+            encoded_input.to(self.device)
+
+            with torch.inference_mode():
+                outputs = model(**encoded_input).logits
+                pred = torch.argmax(outputs).item()
+            
+            if i + 1 == len(unique_indices):
+                self.df.loc[pos:, new_column_name] = self.df.loc[pos:].apply(lambda _: pred, axis=1)
+
+            else:
+                next_index = unique_indices[i + 1]
+                self.df.loc[pos:next_index - 1, new_column_name] = self.df.loc[pos:next_index - 1].apply(lambda _: pred, axis=1)
 
         return self
+    
     
     def entitiy_recognition(self, columns: list([str]), lean=True, device=None):
         if device:

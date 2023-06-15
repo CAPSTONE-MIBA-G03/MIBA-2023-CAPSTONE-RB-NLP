@@ -199,8 +199,3 @@ def get_content(links: list) -> dict:
                 continue
 
     return results
-
-
-# TODO
-# Make this a method of the Search Engine classes? Might make sense
-# For some articles, the newspaper3k lib seems to fail on grand scale. Example is MSN!

@@ -8,7 +8,6 @@ from etl_pipeline.content_extractor import get_content
 from etl_pipeline.link_extractor import get_all_links
 
 
-
 class PipelineExecutor:
     '''
     Class to execute the pipeline for a given query
@@ -100,7 +99,7 @@ class PipelineExecutor:
         dirty_content_df = pd.DataFrame(dirty_content_df)
         dirty_content_df = pd.merge(links_df, dirty_content_df, left_on='se_link', right_on='bs_link')
         dirty_content_df = dirty_content_df.explode('bs_paragraph', ignore_index=False)
-        dirty_content_df = dirty_content_df.reset_index(names='paragraph_index')
+        dirty_content_df = dirty_content_df.reset_index(names='article_index')
 
         dirty_content_df.to_csv(raw_filename, index=False)
 
