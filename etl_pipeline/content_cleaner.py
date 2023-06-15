@@ -28,16 +28,14 @@ def clean_content(df):
                     | (df_dirty['n3k_title'].str.len() < 20), 'n3k_title'] = ''
         
     for word in ['cookies', 'javascript', 'register', 'explorer', 'benzinga', 'djreprints']:
-        df_dirty.loc[(df_dirty['n3k_body'].str.lower().str.contains(word))
-                    | (df_dirty['n3k_body'].str.len() < 400), 'n3k_body'] = ''
+        df_dirty.loc[df_dirty['n3k_body'].str.len() < 400, 'n3k_body'] = ''
 
     for word in ['yahoo finance', 'bloomberg', 'yahoo news', 'navigation', 'the straits times']:
         df_dirty.loc[(df_dirty['bs_title'].str.lower().str.contains(word))
                     | (df_dirty['bs_title'].str.len() < 20), 'bs_title'] = ''
 
     for word in ['javascript', 'copyright', 'benzinga', 'djreprints']:
-        df_dirty.loc[(df_dirty['bs_body'].str.lower().str.contains(word))
-                    | (df_dirty['bs_body'].str.len() < 400), 'bs_body'] = ''
+        df_dirty.loc[df_dirty['bs_body'].str.len() < 400, 'bs_body'] = ''
         
     for word in ['javascript', 'copyright', 'benzinga', 'djreprints']:
         df_dirty.loc[(df_dirty['paragraph'].str.lower().str.contains(word))
