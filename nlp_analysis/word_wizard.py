@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from collections import Counter
 import torch
 from bertopic import BERTopic
 from bertopic.representation import KeyBERTInspired
@@ -10,6 +11,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from tqdm.auto import tqdm
+import spacy
 
 tqdm.pandas()
 import transformers
@@ -48,7 +50,7 @@ class WordWizard:
     MEDOID_SUFFIX = '_medoids'
     SUMMARY_SUFFIX = '_summaries'
 
-    def __init__(self, df, device=None) -> None:
+    def __init__(self, df, device=None, interest = 'paragraph') -> None:
         self.df = df.copy().reset_index(drop=True)
         # Setup device agnostic code (Chooses NVIDIA (most optimized) or Metal backend (still better than cpu) if available, otherwise defaults to CPU)
         if device:
@@ -62,8 +64,25 @@ class WordWizard:
 
         else:
             self.device = "cpu"
+        
+        if interest == 'body':
+            self.df = self.df.drop(columns=['article_index', 'paragraph'])
+            self.df = self.df.drop_duplicates()
+            self.df = self.df.reset_index(drop=True) # could make problems somewhere
+            self.interest = interest
+        
 
-        self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
+
+        # delete
+        elif interest == 'skip':
+            pass
+
+
+
+
+        else:
+            self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
+            self.interest = interest
 
     def create_word_embeddings(self, column: str, lean=True, device=None):
         if not device:
@@ -78,10 +97,22 @@ class WordWizard:
 
         model.to(device)
         model.eval()
+        
+        new_column_name = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
+        self.df[new_column_name] = None
+        for i, entry in enumerate(tqdm(self.df[column], desc=f"Creating word embeddings for {column}")):
+            encoded_input = tokenizer(entry, padding=True, truncation=True, return_tensors="pt")
+            encoded_input.to(device)
 
-        new_column_name = column + self.EMB_SUFFIX
-        self.df[new_column_name] = np.nan
+            with torch.inference_mode():
+                outputs = model(**encoded_input)
+                last_hidden_state = outputs.last_hidden_state
+                embedding = torch.mean(last_hidden_state, dim=1).squeeze(0).cpu().numpy()
 
+            self.df.at[i, new_column_name] = embedding
+        
+        return self
+    
         unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
         for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for column {column}")):
 
@@ -114,26 +145,15 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method=None, k=5, n_med=2):
-        if column == 'body':
-            # getting unique articles
-            df = self.df[~self.df['article_index'].duplicated()]
-        else:
-            df = self.df
+    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method=None, k=3, n_med=2):
+        df = self.df
 
         # Define main variables
-        kmeans = {}
+        # kmeans = {}
         K = range(2, k_upperbound)
-        if column == 'sentences':
-            column = column + self.SENT_EMB_SUFFIX
-        else:
-            column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
-
-        # Determine optimal K
-        if method == None:
-            optimal_k = k
-
-        elif method == 'silhouette':
+        column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
+        
+        if (k == None) & (method == 'silhouette'):
             sil = []
 
             # Calculate Silhouette Score for each K
@@ -143,9 +163,10 @@ class WordWizard:
                 sil.append(silhouette_score(df[column].tolist(), labels, metric='euclidean'))
 
             # Find optimal K
-            optimal_k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
+            k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
         
-        elif method == 'elbow':
+        elif (k == None) & (method == 'elbow'):
+            print('hi')
             # ssd = sum of squared distances
             ssd = []
 
@@ -163,14 +184,12 @@ class WordWizard:
 
             # Ask user for optimal K
             try:
-                optimal_k = int(input("Enter the optimal number of clusters (based on the plot): "))
+                k = int(input("Enter the optimal number of clusters (based on the plot): "))
             except ValueError:
                 raise ValueError("Invalid input. Please enter an integer.")
-       
-        else:
-            raise ValueError("Invalid method. Choose 'silhouette' or 'elbow'.")
+            raise ValueError("Invalid method. Choose 'silhouette' or 'elbow' or define k manually.")
 
-        kmeans = KMeans(n_clusters=optimal_k, n_init='auto').fit(df[column].tolist())
+        kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[column].tolist())
         new_column = column + self.CLUSTER_SUFFIX # e.g.: paragraph_word_embeddings_cluster_5
         
         # Add cluster labels to dataframe
@@ -184,21 +203,6 @@ class WordWizard:
             distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
             closest_indices = distances.nsmallest(n_med).index
             df.loc[closest_indices, new_column + self.MEDOID_SUFFIX] = True
-            
-        # filling the initial df (self.df)
-        for i, pos in enumerate(df.index):
-            # if the current index is the last index in df, fill the rest of the df
-            if i + 1 == len(df.index):
-                self.df.loc[pos:, new_column] = df.loc[pos:, new_column]
-                self.df.loc[pos:, new_column + self.MEDOID_SUFFIX] = df.loc[pos:, new_column + self.MEDOID_SUFFIX]
-            # else, fill the df until the next index
-            else:
-                next_index = df.index[i + 1]
-                self.df.loc[pos:next_index - 1, new_column] = df.loc[pos:next_index - 1, new_column]
-                self.df.loc[pos:next_index - 1, new_column + self.MEDOID_SUFFIX] = df.loc[pos:next_index - 1, new_column + self.MEDOID_SUFFIX]
-        
-        #self.df = self.df.merge(df[['article_index', new_column, new_column + self.MEDOID_SUFFIX]], on='article_index', how='left')    
-        return self
 
     def summarize_medoids(self, column: str, lean=True, device=None):
 
@@ -240,33 +244,6 @@ class WordWizard:
             self.df.at[pos, new_column_name] = out
 
         return self
-
-
-        summarizer = transformers.pipeline("summarization", model="facebook/bart-large-cnn")
-        tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-        medoids = self.df[self.df[column + '_word_embeddings_clusters' + self.MEDOID_SUFFIX] == True] # body_word_embeddings_clusters_medoids
-        self.df[column + self.SUMMARY_SUFFIX] = None
-        for pos in medoids.index:
-            entry = medoids.loc[pos, column]
-            if type(entry) != str:
-                summary = 'summarized entry was no string'
-            tokenized_input = tokenizer.tokenize(entry)
-            if len(tokenized_input) > 1023: # max input size for BART
-                entry = ' '.join(tokenized_input[:1000]).replace(' ##', '')
-            try:
-                summary = summarizer(entry) # set max size (! >30)
-
-            except:
-                summary = 'could not summarize'
-
-            if type(summary) == list:
-                summary = summary[0]['summary_text']
-
-            if type(summary) == dict:
-                summary = summary['summary_text']
-
-            self.df.loc[pos, column + self.SUMMARY_SUFFIX] = summary
-            
 
     def find_sentiment(self, column: str, device=None):
         """
@@ -321,8 +298,16 @@ class WordWizard:
 
         return self
     
-    
-    def entitiy_recognition(self, columns: list([str]), lean=True, device=None):
+    def entitiy_recognition(self, column: str, lean=True, device=None, w_t=3, w_d=2, top_n=5):
+        """
+        extract the top_n most frequently appearing organizations in a text
+        :param text: text to extract organizations from
+        :param w1: weight for title
+        :param w2: weight for description
+        :param top_n: number of organizations to return
+        :return: list of top_n organizations
+        """
+
         if not device:
             device = self.device
         
@@ -333,6 +318,57 @@ class WordWizard:
             tokenizer = AutoTokenizer.from_pretrained("dslim/bert-large-NER")
             model = AutoModelForTokenClassification.from_pretrained("dslim/bert-large-NER")
 
+        nlp = spacy.load("en_core_web_lg")
+
+        # adding a pattern that will not classify quantum (capital or lower), AI, Company, quantum computing as organizations
+        patterns = [{'label': 'NORG', 'pattern': 'Quantum'},
+                    {'label': 'NORG', 'pattern': 'quantum'},
+                    {'label': 'NORG', 'pattern': 'AI'},
+                    {'label': 'NORG', 'pattern': 'Company'},
+                    {'label': 'NORG', 'pattern': 'quantum computing'},
+                    {'label': 'NQORG', 'pattern': 'NYSE'}, # not quantum orgs
+                    {'label': 'NQORG', 'pattern': 'NASDAQ'}]
+        
+        # adding the patterns to the nlp model, if it is not already there
+        if 'entity_ruler' not in nlp.pipe_names:
+            ruler = nlp.add_pipe("entity_ruler", before="ner")
+            ruler.add_patterns(patterns)
+        
+        def get_organizations(text):
+            doc = nlp(text)
+            orgs = [str(ent) for ent in doc.ents if ent.label_ == 'ORG']
+            return orgs
+
+        
+        self.df[column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = None
+        unique_clusters = self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX]
+        # using tqdm on for i in unique_clusters:
+        for i in tqdm(unique_clusters, desc=f"Extracting organizations for column {column}"):
+            sub = self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i]
+            
+            # Adding a column with organizations for each title, body and description
+            for col in ['title', 'description', column]:
+                sub = sub.assign(**{col+'_orgs': sub[col].apply(lambda x: get_organizations(x) if type(x) == str else [])})
+
+            # getting the n most important organizations for each cluster
+            all_orgs = sub['title_orgs'].explode().tolist() * w_t + sub['description'].explode().tolist() * w_d + sub[column + '_orgs'].explode().tolist()
+            all_orgs = [org for org in all_orgs if type(org) != float]
+            orgs = Counter(all_orgs)
+            orgs_list = [org[0] for org in orgs.most_common(top_n)]
+            self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i][column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = orgs_list
+
+        return self
+    
+    
+        if not device:
+            device = self.device
+        
+        if lean:
+            tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
+            model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
+        else:
+            tokenizer = AutoTokenizer.from_pretrained("dslim/bert-large-NER")
+            model = AutoModelForTokenClassification.from_pretrained("dslim/bert-large-NER")
         for column in tqdm(columns, desc=f"Creating embeddings for column: {columns}", leave=True):
             new_column_name = column + self.NER_SUFFIX
             self.df[new_column_name] = None
