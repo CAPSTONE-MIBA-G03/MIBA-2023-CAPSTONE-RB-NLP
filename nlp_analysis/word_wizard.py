@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 
 from bertopic import BERTopic
+from bertopic.representation import KeyBERTInspired
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
@@ -305,33 +306,57 @@ class WordWizard:
 
         return self
 
-    def topic_modelling(self, column):
+    def topic_modelling(self, column, with_embeddings=True, sample_size=1000):
         """
-        Performs topic modelling on the specified column using pre-generated BERT embeddings.
+        Performs topic modelling on the input column and adds a new column with the suffix '_topic.'
+
+        Parameters
+        ----------
+        column : {"title", "description", "body", "paragraph", "sentences"}
+            The column to perform topic modelling on.
+
+        with_embeddings : bool, optional
+            Whether to use the embeddings or not. If not specified, the embeddings are used.
+
+        return_model : bool, optional 
+            Whether to return the topic model or not. If not specified, the topic model is not returned.
+
+        Examples
+        --------
+        >>> from nlp_analysis import WordWizard
+        >>> pipe = WordWizard(df = df)
+        >>> pipe.topic_modelling(column = "body")
+        >>> pipe.df["body_topic"].head()
         
-        Parameters:
-        column (str): Name of the dataframe column to perform topic modelling on.
         """
 
-        # Assume embeddings column is the column name plus "_word_embeddings"
-        emb_column = column + self.EMB_SUFFIX
-        
-        # Check if embeddings exist
-        if emb_column not in self.df.columns:
-            raise ValueError(f"Embeddings for column {column} not found. Please run 'create_word_embeddings' first.")
-        
-        # Get embeddings
-        embeddings = np.array(self.df[emb_column].tolist())
-        
-        # Run BERTopic
-        topic_model = BERTopic(verbose=True)
-        topics, _ = topic_model.fit_transform(self.df[column], embeddings)
+        if with_embeddings:
+            # Assume embeddings column is the column name plus "_word_embeddings"
+            emb_column = column + self.EMB_SUFFIX
+            
+            # Check if embeddings exist
+            if emb_column not in self.df.columns:
+                raise ValueError(f"Embeddings for column {column} not found. Please run 'create_word_embeddings' first.")
+            
+            # Get embeddings
+            embeddings = np.array(self.df[emb_column].tolist())
+            
+            # Run BERTopic
+            self.topic_model = BERTopic(verbose=True)
+            topics, _ = self.topic_model.fit_transform(self.df[column], embeddings)
+
+        else:
+            # Run BERTopic
+            representation_model = KeyBERTInspired()
+            self.topic_model = BERTopic(representation_model=representation_model)
+            df_sample = self.df.sample(sample_size) # Sample dataframe to reduce computation time
+            topics, _ = self.topic_model.fit_transform(df_sample[column])
 
         # Create a mapping of topic id to words
-        topic_id_to_words = {topic_id: topic_model.get_topic(topic_id) for topic_id in set(topics)}
+        topic_id_to_words = {topic_id: self.topic_model.get_topic(topic_id) for topic_id in set(topics)}
 
         # Add topic labels and words to dataframe
         self.df[column + '_topic_id'] = topics
         self.df[column + '_topic_words'] = self.df[column + '_topic_id'].map(topic_id_to_words)
-                
-        return topic_model
+        
+        return self
