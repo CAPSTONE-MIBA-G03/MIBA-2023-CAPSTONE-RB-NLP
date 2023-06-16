@@ -145,22 +145,22 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method=None, k=3, n_med=2):
+    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette', k=None, n_med=2):
         df = self.df
 
         # Define main variables
-        # kmeans = {}
+        kmeans = {}
         K = range(2, k_upperbound)
-        column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
+        embed_column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
         
         if (k == None) & (method == 'silhouette'):
             sil = []
 
             # Calculate Silhouette Score for each K
             for k in K:
-                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(df[column].tolist())
+                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
                 labels = kmeans[k].labels_
-                sil.append(silhouette_score(df[column].tolist(), labels, metric='euclidean'))
+                sil.append(silhouette_score(df[embed_column].tolist(), labels))
 
             # Find optimal K
             k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
@@ -172,7 +172,7 @@ class WordWizard:
 
             # Calculate sum of squared distances for each K
             for k in K:
-                model = KMeans(n_clusters=k, n_init='auto').fit(df[column].tolist())
+                model = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
                 ssd.append(model.inertia_)
 
             # Plot sum of squared distances
@@ -189,20 +189,20 @@ class WordWizard:
                 raise ValueError("Invalid input. Please enter an integer.")
             raise ValueError("Invalid method. Choose 'silhouette' or 'elbow' or define k manually.")
 
-        kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[column].tolist())
-        new_column = column + self.CLUSTER_SUFFIX # e.g.: paragraph_word_embeddings_cluster_5
+        kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
+        clust_col = embed_column + self.CLUSTER_SUFFIX # e.g.: paragraph_word_embeddings_cluster_5
         
         # Add cluster labels to dataframe
-        df[new_column] = kmeans.labels_
+        df[clust_col] = kmeans.labels_
         
         # Finding Medoids
         centroids = kmeans.cluster_centers_
-        df[new_column + self.MEDOID_SUFFIX] = False
+        df[clust_col + self.MEDOID_SUFFIX] = False
         for i, centroid in enumerate(centroids):
-            points_in_cluster = df[df[new_column] == i][column]
+            points_in_cluster = df[df[clust_col] == i][embed_column]
             distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
             closest_indices = distances.nsmallest(n_med).index
-            df.loc[closest_indices, new_column + self.MEDOID_SUFFIX] = True
+            df.loc[closest_indices, clust_col + self.MEDOID_SUFFIX] = True
 
     def summarize_medoids(self, column: str, lean=True, device=None):
 
@@ -341,7 +341,7 @@ class WordWizard:
 
         
         self.df[column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = None
-        unique_clusters = self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX]
+        unique_clusters = self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX].unique()
         # using tqdm on for i in unique_clusters:
         for i in tqdm(unique_clusters, desc=f"Extracting organizations for column {column}"):
             sub = self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i]
@@ -355,7 +355,7 @@ class WordWizard:
             all_orgs = [org for org in all_orgs if type(org) != float]
             orgs = Counter(all_orgs)
             orgs_list = [org[0] for org in orgs.most_common(top_n)]
-            self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i][column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = orgs_list
+            self.df.loc[(self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = str(orgs_list)
 
         return self
     
