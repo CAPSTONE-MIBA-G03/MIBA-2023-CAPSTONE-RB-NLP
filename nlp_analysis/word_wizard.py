@@ -5,11 +5,14 @@ from collections import Counter
 import torch
 from bertopic import BERTopic
 from bertopic.representation import KeyBERTInspired
+from hdbscan import HDBSCAN
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
+from sklearn.feature_extraction.text import CountVectorizer
+from umap import UMAP
 from tqdm.auto import tqdm
 import spacy
 
@@ -49,6 +52,7 @@ class WordWizard:
     NER_SUFFIX = '_NER'
     MEDOID_SUFFIX = '_medoids'
     SUMMARY_SUFFIX = '_summaries'
+    REDDIM_SUFFIX = '_reduced_dimensions'
 
     def __init__(self, df, device=None, interest = 'paragraph') -> None:
         self.df = df.copy().reset_index(drop=True)
@@ -141,17 +145,17 @@ class WordWizard:
             device = self.device
 
         model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-        self.df[column + self.SENT_EMB_SUFFIX] = self.df[column].progress_apply(lambda sentences: model.encode(sentences, device=device).mean(axis=0))
+        self.df[column + self.SENT_EMB_SUFFIX] = model.encode(self.df[column].tolist(), show_progress_bar=True).tolist()
 
         return self
 
     def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette', k=None, n_med=2):
         df = self.df
+        embed_column = self._get_embed_col(column)
 
         # Define main variables
         kmeans = {}
         K = range(2, k_upperbound)
-        embed_column = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
         
         if (k == None) & (method == 'silhouette'):
             sil = []
@@ -187,10 +191,9 @@ class WordWizard:
                 k = int(input("Enter the optimal number of clusters (based on the plot): "))
             except ValueError:
                 raise ValueError("Invalid input. Please enter an integer.")
-            raise ValueError("Invalid method. Choose 'silhouette' or 'elbow' or define k manually.")
 
         kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
-        clust_col = embed_column + self.CLUSTER_SUFFIX # e.g.: paragraph_word_embeddings_cluster_5
+        clust_col = embed_column + self.CLUSTER_SUFFIX 
         
         # Add cluster labels to dataframe
         df[clust_col] = kmeans.labels_
@@ -384,57 +387,77 @@ class WordWizard:
 
         return self
 
-    def topic_modelling(self, column, with_embeddings=True, sample_size=1000):
-        """
-        Performs topic modelling on the input column and adds a new column with the suffix '_topic.'
-
-        Parameters
-        ----------
-        column : {"title", "description", "body", "paragraph", "sentences"}
-            The column to perform topic modelling on.
-
-        with_embeddings : bool, optional
-            Whether to use the embeddings or not. If not specified, the embeddings are used.
-
-        return_model : bool, optional 
-            Whether to return the topic model or not. If not specified, the topic model is not returned.
-
-        Examples
-        --------
-        >>> from nlp_analysis import WordWizard
-        >>> pipe = WordWizard(df = df)
-        >>> pipe.topic_modelling(column = "body")
-        >>> pipe.df["body_topic"].head()
+    def reduce_demensionality(self, column, n_components=2, n_neighbors=15, min_dist=0.0, metric='cosine'):
+        # check if either word_embeddings or sentence embeddings are present else raise error
+        embed_column = self._get_embed_col(column)
         
-        """
+        # getting the embeddings for the column
+        embeddings = self.df[embed_column].tolist()
 
-        if with_embeddings:
-            # Assume embeddings column is the column name plus "_word_embeddings"
-            emb_column = column + self.EMB_SUFFIX
-            
-            # Check if embeddings exist
-            if emb_column not in self.df.columns:
-                raise ValueError(f"Embeddings for column {column} not found. Please run 'create_word_embeddings' first.")
-            
-            # Get embeddings
-            embeddings = np.array(self.df[emb_column].tolist())
-            
-            # Run BERTopic
-            self.topic_model = BERTopic(verbose=True)
-            topics, _ = self.topic_model.fit_transform(self.df[column], embeddings)
+        # creating the umap embeddings
+        umap_data = UMAP(n_neighbors=n_neighbors, n_components=n_components, min_dist=min_dist, metric=metric).fit_transform(embeddings)
 
-        else:
-            # Run BERTopic
-            representation_model = KeyBERTInspired()
-            self.topic_model = BERTopic(representation_model=representation_model)
-            df_sample = self.df.sample(sample_size) # Sample dataframe to reduce computation time
-            topics, _ = self.topic_model.fit_transform(df_sample[column])
+        # adding the umap embeddings to the dataframe
+        self.df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX] = umap_data.tolist()
 
-        # Create a mapping of topic id to words
-        topic_id_to_words = {topic_id: self.topic_model.get_topic(topic_id) for topic_id in set(topics)}
-
-        # Add topic labels and words to dataframe
-        self.df[column + '_topic_id'] = topics
-        self.df[column + '_topic_words'] = self.df[column + '_topic_id'].map(topic_id_to_words)
-        
         return self
+
+    def topic_modelling(self, column, with_embeddings=True, sample_size=1000):
+
+        # checking if clusters are already created
+        cluster_col = self._get_cluster_col(column)
+
+        # create c-tf-idf helper function
+        def c_tf_idf(documents, m, ngram_range=(1, 1)):
+            count = CountVectorizer(ngram_range=ngram_range, stop_words="english").fit(documents)
+            t = count.transform(documents).toarray()
+            w = t.sum(axis=1)
+            tf = np.divide(t.T, w)
+            sum_t = t.sum(axis=0)
+            idf = np.log(np.divide(m, sum_t)).reshape(-1, 1)
+            tf_idf = np.multiply(tf, idf)
+
+            return tf_idf, count
+        
+        # create function to extract top n words per topic
+        def extract_top_n_words_per_topic(tf_idf, count, docs_per_topic, n=20):
+            words = count.get_feature_names_out()
+            labels = list(docs_per_topic[cluster_col])
+            tf_idf_transposed = tf_idf.T
+            indices = tf_idf_transposed.argsort()[:, -n:]
+            top_n_words = {label: [(words[j], tf_idf_transposed[i][j]) for j in indices[i]][::-1] for i, label in enumerate(labels)}
+            return top_n_words
+
+        # create docs_df with the column and the cluster
+        docs_df = self.df[[column, cluster_col]].copy()
+
+        # create docs per topic
+        docs_per_topic = docs_df.groupby([cluster_col], as_index = False).agg({column: ' '.join})
+
+        # get tf-idf and count vectorizer
+        tf_idf, count = c_tf_idf(docs_per_topic[column].values, len(self.df))
+        
+        return extract_top_n_words_per_topic(tf_idf, count, docs_per_topic)
+    
+    # Helper functions
+    def _get_embed_col(self, column):
+
+        # check if either word_embeddings or sentence embeddings are present else raise error
+        if column + self.EMB_SUFFIX in self.df.columns:
+            return column + self.EMB_SUFFIX
+        
+        elif column + self.SENT_EMB_SUFFIX in self.df.columns:
+            return column + self.SENT_EMB_SUFFIX
+        
+        else:
+            raise ValueError(f"Column {column} does not exist in dataframe. Please create embeddings first.")
+        
+
+    def _get_cluster_col(self, column):
+        embed_column = self._get_embed_col(column)
+
+        if embed_column + self.CLUSTER_SUFFIX in self.df.columns:
+            return embed_column + self.CLUSTER_SUFFIX
+        
+        else:
+            raise ValueError(f"Column {column} does not exist in dataframe. Please create clusters first.")
