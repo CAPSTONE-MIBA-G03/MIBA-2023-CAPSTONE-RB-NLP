@@ -17,13 +17,12 @@ from tqdm.auto import tqdm
 import spacy
 
 tqdm.pandas()
-import transformers
 from transformers import (AutoModelForSeq2SeqLM,
                           AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
-                          BartModel, BartTokenizer, BertModel, BertTokenizer,
+                          BertModel, BertTokenizer, pipeline,
                           DistilBertForSequenceClassification,
-                          DistilBertTokenizer, pipeline)
+                          DistilBertTokenizer)
 
 
 class WordWizard:
@@ -74,15 +73,6 @@ class WordWizard:
             self.df = self.df.drop_duplicates()
             self.df = self.df.reset_index(drop=True) # could make problems somewhere
             self.interest = interest
-        
-
-
-        # delete
-        elif interest == 'skip':
-            pass
-
-
-
 
         else:
             self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
@@ -210,7 +200,9 @@ class WordWizard:
             df.loc[closest_indices, clust_col + self.MEDOID_SUFFIX] = True
 
     def summarize_medoids(self, column: str, lean=True, device=None):
-
+        
+        cluster_col = self._get_cluster_col(column)
+        
         if not device:
             device = self.device
 
@@ -222,20 +214,14 @@ class WordWizard:
             model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
 
         model.to(device)
-
-        new_column_name = column + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
         
-        if column == 'sentences':
-            medoid = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
-            new_column_name = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
-        else:
-            medoid = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
-            new_column_name = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
+        medoid = cluster_col + self.MEDOID_SUFFIX
+        new_column_name = cluster_col + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
 
         self.df[new_column_name] = np.nan
 
         medoid_indices = self.df.loc[self.df[medoid] == True].index.tolist()
-        for i, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
+        for _, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
 
             text = self.df.at[pos, column]
 
@@ -344,12 +330,18 @@ class WordWizard:
             orgs = [str(ent) for ent in doc.ents if ent.label_ == 'ORG']
             return orgs
 
+
+
+        if column + self.EMB_SUFFIX in self.df.columns:
+            embed = self.EMB_SUFFIX
+        elif column + self.SENT_EMB_SUFFIX in self.df.columns:
+            embed = self.SENT_EMB_SUFFIX
         
-        self.df[column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = None
-        unique_clusters = self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX].unique()
+        self.df[column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = None
+        unique_clusters = self.df[column + embed + self.CLUSTER_SUFFIX].unique()
         # using tqdm on for i in unique_clusters:
         for i in tqdm(unique_clusters, desc=f"Extracting organizations for column {column}"):
-            sub = self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i]
+            sub = self.df[self.df[column + embed + self.CLUSTER_SUFFIX] == i]
             
             # Adding a column with organizations for each title, body and description
             for col in ['title', 'description', column]:
@@ -360,7 +352,7 @@ class WordWizard:
             all_orgs = [org for org in all_orgs if type(org) != float]
             orgs = Counter(all_orgs)
             orgs_list = [org[0] for org in orgs.most_common(top_n)]
-            self.df.loc[(self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = str(orgs_list)
+            self.df.loc[(self.df[column + embed + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = str(orgs_list)
 
         return self
     
@@ -454,7 +446,6 @@ class WordWizard:
         else:
             raise ValueError(f"Column {column} does not exist in dataframe. Please create embeddings first.")
         
-
     def _get_cluster_col(self, column):
         embed_column = self._get_embed_col(column)
 
