@@ -336,7 +336,6 @@ class WordWizard:
 
         return self
     
-
     def reduce_demensionality(self, column, n_components=2, n_neighbors=15, min_dist=0.0, metric='cosine'):
         # check if either word_embeddings or sentence embeddings are present else raise error
         embed_column = self._get_embed_col(column)
