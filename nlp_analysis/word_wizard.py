@@ -1,32 +1,31 @@
-import nltk
 import re
-import spacy
-import torch
+from collections import Counter
+
 import matplotlib.pyplot as plt
+import nltk
 import numpy as np
 import pandas as pd
-
-from collections import Counter
+import spacy
+import torch
 from hdbscan import HDBSCAN
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.tokenize import sent_tokenize, word_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
-from sklearn.feature_extraction.text import CountVectorizer
-from umap import UMAP
 from tqdm.auto import tqdm
-
+from umap import UMAP
 
 tqdm.pandas()
 from transformers import (AutoModelForSeq2SeqLM,
                           AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
-                          BertModel, BertTokenizer, pipeline,
+                          BertModel, BertTokenizer,
                           DistilBertForSequenceClassification,
-                          DistilBertTokenizer)
+                          DistilBertTokenizer, pipeline)
 
 
 class WordWizard:
@@ -40,6 +39,11 @@ class WordWizard:
 
     device : str, optional
         The device to use for the analysis. If not specified, the class will automatically choose the best possible device available.
+
+    interest : str, optional
+        The news article specific attribute to analyze. Defaults to 'paragraph'.
+        - 'paragraph': Paragraphs of the news article are used for analysis.
+        - 'sentences': Sentences of the news article are used for analysis.
 
     Examples
     --------
@@ -77,7 +81,10 @@ class WordWizard:
         else:
             self.device = "cpu"
         
-        # Setup interest
+        # Setup interest (should expand to description and title as well) -> just design choice, code shoukd work for all
+        # Further, might revisit 'lean' feature and implement it so that lean is good for cpu while set to false is advisable to use GPU
+        # This is already implemented in the create_word_embeddings, sentiment, (and somewhat summarization - aka GPU is slightly broken there)
+
         if interest == 'body':
             self.df = self.df.drop(columns=['article_index', 'paragraph'])
             self.df = self.df.drop_duplicates()
@@ -88,7 +95,7 @@ class WordWizard:
             self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
             self.interest = interest
 
-    def create_word_embeddings(self, column: str, lean=True, device=None):
+    def create_word_embeddings(self, lean=True, device=None):
         if not device:
             device = self.device
 
@@ -102,9 +109,9 @@ class WordWizard:
         model.to(device)
         model.eval()
         
-        new_column_name = column + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
+        new_column_name = self.interest + self.EMB_SUFFIX # e.g.: paragraph_word_embeddings
         self.df[new_column_name] = None
-        for i, entry in enumerate(tqdm(self.df[column], desc=f"Creating word embeddings for {column}")):
+        for i, entry in enumerate(tqdm(self.df[self.interest], desc=f"Creating word embeddings for {self.interest}")):
             encoded_input = tokenizer(entry, padding=True, truncation=True, return_tensors="pt")
             encoded_input.to(device)
 
@@ -117,17 +124,17 @@ class WordWizard:
         
         return self
 
-    def create_sentence_embeddings(self, column="sentences" ,device=None):
-        # Testing for now shows that cpu is faster than gpu for this task, thus added device option
+    def create_sentence_embeddings(self, device=None):
+
         if not device:
             device = self.device
 
         model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-        self.df[column + self.SENT_EMB_SUFFIX] = model.encode(self.df[column].tolist(), show_progress_bar=True).tolist()
+        self.df[self.interest + self.SENT_EMB_SUFFIX] = model.encode(self.df[self.interest].tolist(), show_progress_bar=True).tolist()
 
         return self
 
-    def cluster_embeddings(self, column, algorithm='kmeans', method='silhouette', k=None, k_max=15, k_min=5, n_med=2):
+    def cluster_embeddings(self, algorithm='kmeans', method='silhouette', k=None, k_max=15, k_min=5, n_med=2):
         """
         Clusters the word embeddings of the specified column.
 
@@ -137,6 +144,8 @@ class WordWizard:
             The column to cluster.
         algorithm : str, optional
             The clustering algorithm to use. Defaults to 'kmeans'.
+            - 'kmeans': K-Means clustering.
+            - 'hdbscan': HDBSCAN clustering.
         method : str, optional
             The method to use for determining the optimal number of clusters. Defaults to 'silhouette'.
         k : int, optional
@@ -156,7 +165,7 @@ class WordWizard:
         """
 
         df = self.df
-        embed_column = self._get_embed_col(column)
+        embed_column = self._get_embed_col(self.interest)
         clust_column = embed_column + self.CLUSTER_SUFFIX
 
         # Cluster
@@ -166,12 +175,12 @@ class WordWizard:
             self._find_medoids(df, embed_column, clust_column, model, n_med)
 
         elif algorithm == 'hdbscan':
-            reduced_column = column + self.REDDIM_SUFFIX + self.EMB_SUFFIX
+            reduced_column = self.interest + self.REDDIM_SUFFIX + self.EMB_SUFFIX
             
             if reduced_column not in df.columns:
-                self.reduce_demensionality(column)
+                self.reduce_demensionality(self.interest)
             
-            model = HDBSCAN(min_cluster_size=k_min).fit(df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX].tolist())
+            model = HDBSCAN(min_cluster_size=k_min).fit(df[self.interest + self.REDDIM_SUFFIX + self.EMB_SUFFIX].tolist())
             df[clust_column] = model.labels_
 
         else:
@@ -179,19 +188,21 @@ class WordWizard:
         
         return self
 
-    def summarize_medoids(self, column: str, lean=True, device=None):
+    def summarize_medoids(self, lean=True, device=None):
         
-        cluster_col = self._get_cluster_col(column)
+        cluster_col = self._get_cluster_col(self.interest)
         
         if not device:
             device = self.device
 
         if lean:
-            tokenizer = AutoTokenizer.from_pretrained("google/pegasus-cnn_dailymail")
-            model = AutoModelForSeq2SeqLM.from_pretrained("google/pegasus-cnn_dailymail")
-        else:
             tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
             model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
+            device = "cpu" # MPS bug currently doesnt allow GPU for this model (its fast on cpu anyways though)
+
+        else:
+            tokenizer = AutoTokenizer.from_pretrained("google/pegasus-cnn_dailymail")
+            model = AutoModelForSeq2SeqLM.from_pretrained("google/pegasus-cnn_dailymail")
 
         model.to(device)
         
@@ -201,9 +212,9 @@ class WordWizard:
         self.df[new_column_name] = np.nan
 
         medoid_indices = self.df.loc[self.df[medoid] == True].index.tolist()
-        for _, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
+        for _, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for cluster medoids based on {self.interest}")):
 
-            text = self.df.at[pos, column]
+            text = self.df.at[pos, self.interest]
 
             encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
             encoded_input.to(device)
@@ -216,7 +227,7 @@ class WordWizard:
 
         return self
 
-    def find_sentiment(self, column: str, device=None):
+    def find_sentiment(self, lean=True, device=None):
         """
         Computes the sentiment score for the input column and adds a new column with the suffix '_sentiment.'
 
@@ -236,22 +247,30 @@ class WordWizard:
         >>> pipe.df["body_sentiment"].head()
         """
 
+        # What if we calculate sentiment on medoids as well (similar to summarization)? -> NewsSentiment 1.1.25 library exists as well
+        # Might need more specific sentiment model trained on news (not 100% sure tho)
+
         if not device:
             device = self.device
 
-        tokenizer = AutoTokenizer.from_pretrained("siebert/sentiment-roberta-large-english")
-        model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english")
+        if lean:
+            tokenizer = AutoTokenizer.from_pretrained("Seethal/sentiment_analysis_generic_dataset")
+            model = AutoModelForSequenceClassification.from_pretrained("Seethal/sentiment_analysis_generic_dataset") # 3 classes: positive(2), neutral(1), negative(0)
+
+        else:
+            tokenizer = AutoTokenizer.from_pretrained("siebert/sentiment-roberta-large-english")
+            model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english")
 
         model.to(device)
         model.eval()
 
-        new_column_name = column + self.SENTIMENT_SUFFIX
+        new_column_name = self.interest + self.SENTIMENT_SUFFIX
         self.df[new_column_name] = np.nan
 
-        unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
-        for i, pos in enumerate(tqdm(unique_indices, desc=f"Calculating sentiment for column {column}")):
+        unique_indices = self.df[~self.df[self.interest].duplicated()].index.tolist()
+        for i, pos in enumerate(tqdm(unique_indices, desc=f"Calculating sentiment for {self.interest}")):
 
-            text = self.df.at[pos, column]
+            text = self.df.at[pos, self.interest]
 
             encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
             encoded_input.to(device)
@@ -269,7 +288,7 @@ class WordWizard:
 
         return self
     
-    def entitiy_recognition(self, column: str, lean=True, device=None, w_t=3, w_d=2, top_n=5):
+    def entitiy_recognition(self, lean=True, device=None, w_t=3, w_d=2, top_n=5):
         """
         extract the top_n most frequently appearing organizations in a text
         :param text: text to extract organizations from
@@ -312,27 +331,27 @@ class WordWizard:
 
 
 
-        if column + self.EMB_SUFFIX in self.df.columns:
+        if self.interest + self.EMB_SUFFIX in self.df.columns:
             embed = self.EMB_SUFFIX
-        elif column + self.SENT_EMB_SUFFIX in self.df.columns:
+        elif self.interest + self.SENT_EMB_SUFFIX in self.df.columns:
             embed = self.SENT_EMB_SUFFIX
         
-        self.df[column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = None
-        unique_clusters = self.df[column + embed + self.CLUSTER_SUFFIX].unique()
+        self.df[self.interest + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = None
+        unique_clusters = self.df[self.interest + embed + self.CLUSTER_SUFFIX].unique()
         # using tqdm on for i in unique_clusters:
-        for i in tqdm(unique_clusters, desc=f"Extracting organizations for column {column}"):
-            sub = self.df[self.df[column + embed + self.CLUSTER_SUFFIX] == i]
+        for i in tqdm(unique_clusters, desc=f"Extracting organizations from {self.interest}"):
+            sub = self.df[self.df[self.interest + embed + self.CLUSTER_SUFFIX] == i]
             
             # Adding a column with organizations for each title, body and description
-            for col in ['title', 'description', column]:
+            for col in ['title', 'description', self.interest]:
                 sub = sub.assign(**{col+'_orgs': sub[col].apply(lambda x: get_organizations(x) if type(x) == str else [])})
 
             # getting the n most important organizations for each cluster
-            all_orgs = sub['title_orgs'].explode().tolist() * w_t + sub['description'].explode().tolist() * w_d + sub[column + '_orgs'].explode().tolist()
+            all_orgs = sub['title_orgs'].explode().tolist() * w_t + sub['description'].explode().tolist() * w_d + sub[self.interest + '_orgs'].explode().tolist()
             all_orgs = [org for org in all_orgs if type(org) != float]
             orgs = Counter(all_orgs)
             orgs_list = [org[0] for org in orgs.most_common(top_n)]
-            self.df.loc[(self.df[column + embed + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = str(orgs_list)
+            self.df.loc[(self.df[self.interest + embed + self.CLUSTER_SUFFIX] == i), self.interest + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = str(orgs_list)
 
         return self
     
@@ -351,7 +370,7 @@ class WordWizard:
 
         return self
 
-    def topic_modelling(self, column, n_words=20):
+    def topic_modelling(self, n_words=20):
         '''
         Find topics for each cluster. 
 
@@ -369,9 +388,10 @@ class WordWizard:
         '''
 
         # checking if clusters are already created
-        cluster_col = self._get_cluster_col(column)
+        cluster_col = self._get_cluster_col(self.interest)
 
         def lemmatize_text(text):
+            # Might consider using more agressive approach aka stemming as well
             lemmatizer = WordNetLemmatizer()
             stop_words = set(stopwords.words('english'))
 
@@ -410,13 +430,13 @@ class WordWizard:
             return pd.DataFrame(list(top_n_words.items()), columns=[cluster_col, 'topics'])
 
         # create docs_df with the column and the cluster
-        docs_df = self.df[[column, cluster_col]].copy()
+        docs_df = self.df[[self.interest, cluster_col]].copy()
 
         # create docs per topic
-        docs_per_topic = docs_df.groupby([cluster_col], as_index = False).agg({column: ' '.join})
+        docs_per_topic = docs_df.groupby([cluster_col], as_index = False).agg({self.interest: ' '.join})
 
         # get tf-idf and count vectorizer
-        tf_idf, count = c_tf_idf(docs_per_topic[column].values, len(self.df))
+        tf_idf, count = c_tf_idf(docs_per_topic[self.interest].values, len(self.df))
 
         # get top n words per topic
         top_n_words_df = extract_top_n_words_per_topic(tf_idf, count, docs_per_topic, n_words)
