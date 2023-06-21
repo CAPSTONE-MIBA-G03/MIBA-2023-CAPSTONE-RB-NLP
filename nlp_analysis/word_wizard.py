@@ -1,12 +1,16 @@
+import nltk
+import re
+import spacy
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
 from collections import Counter
-import torch
-from bertopic import BERTopic
-from bertopic.representation import KeyBERTInspired
 from hdbscan import HDBSCAN
-from nltk.tokenize import sent_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize, sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
@@ -14,7 +18,7 @@ from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from sklearn.feature_extraction.text import CountVectorizer
 from umap import UMAP
 from tqdm.auto import tqdm
-import spacy
+
 
 tqdm.pandas()
 import transformers
@@ -55,7 +59,12 @@ class WordWizard:
     REDDIM_SUFFIX = '_reduced_dimensions'
 
     def __init__(self, df, device=None, interest = 'paragraph') -> None:
+        # Setup nltk
+        nltk.download('punkt', quiet=True)
+        nltk.download('wordnet', quiet=True)
+
         self.df = df.copy().reset_index(drop=True)
+       
         # Setup device agnostic code (Chooses NVIDIA (most optimized) or Metal backend (still better than cpu) if available, otherwise defaults to CPU)
         if device:
             self.device = device
@@ -69,20 +78,16 @@ class WordWizard:
         else:
             self.device = "cpu"
         
+        # Setup interest
         if interest == 'body':
             self.df = self.df.drop(columns=['article_index', 'paragraph'])
             self.df = self.df.drop_duplicates()
             self.df = self.df.reset_index(drop=True) # could make problems somewhere
             self.interest = interest
         
-
-
         # delete
         elif interest == 'skip':
             pass
-
-
-
 
         else:
             self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
@@ -149,63 +154,27 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette', k=None, n_med=2):
+    def cluster_embeddings(self, column, k_upperbound=15, algorithm='kmeans', method='silhouette', k=None, n_med=2):
         df = self.df
         embed_column = self._get_embed_col(column)
+        clust_column = embed_column + self.CLUSTER_SUFFIX
 
-        # Define main variables
-        kmeans = {}
-        K = range(2, k_upperbound)
+        if algorithm == 'kmeans':
+            model = self._kmeans_clustering(df, embed_column, k_upperbound, method, k)
+            df[clust_column] = model.labels_
+            self._find_medoids(df, embed_column, clust_column, model, n_med)
         
-        if (k == None) & (method == 'silhouette'):
-            sil = []
+        elif algorithm == 'hdbscan':
+            reduced_column = column + self.REDDIM_SUFFIX + self.EMB_SUFFIX
+            if reduced_column not in df.columns:
+                self.reduce_demensionality(column)
+            model = HDBSCAN(min_cluster_size=5).fit(df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX].tolist())
+            df[clust_column] = model.labels_
 
-            # Calculate Silhouette Score for each K
-            for k in K:
-                kmeans[k] = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
-                labels = kmeans[k].labels_
-                sil.append(silhouette_score(df[embed_column].tolist(), labels))
+        else:
+            raise ValueError('Invalid algorithm. Choose either "kmeans" or "hdbscan".')
 
-            # Find optimal K
-            k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
-        
-        elif (k == None) & (method == 'elbow'):
-            print('hi')
-            # ssd = sum of squared distances
-            ssd = []
-
-            # Calculate sum of squared distances for each K
-            for k in K:
-                model = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
-                ssd.append(model.inertia_)
-
-            # Plot sum of squared distances
-            plt.plot(K, ssd, 'bx-')
-            plt.xlabel('k')
-            plt.ylabel('Sum of squared distances')
-            plt.title('Elbow Method For Optimal k')
-            plt.show()
-
-            # Ask user for optimal K
-            try:
-                k = int(input("Enter the optimal number of clusters (based on the plot): "))
-            except ValueError:
-                raise ValueError("Invalid input. Please enter an integer.")
-
-        kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
-        clust_col = embed_column + self.CLUSTER_SUFFIX 
-        
-        # Add cluster labels to dataframe
-        df[clust_col] = kmeans.labels_
-        
-        # Finding Medoids
-        centroids = kmeans.cluster_centers_
-        df[clust_col + self.MEDOID_SUFFIX] = False
-        for i, centroid in enumerate(centroids):
-            points_in_cluster = df[df[clust_col] == i][embed_column]
-            distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
-            closest_indices = distances.nsmallest(n_med).index
-            df.loc[closest_indices, clust_col + self.MEDOID_SUFFIX] = True
+        return self
 
     def summarize_medoids(self, column: str, lean=True, device=None):
 
@@ -402,14 +371,46 @@ class WordWizard:
 
         return self
 
-    def topic_modelling(self, column, with_embeddings=True, sample_size=1000):
+    def topic_modelling(self, column, n_words=20):
+        '''
+        Find topics for each cluster. 
+
+        Parameters
+        ----------
+        column : str
+            The column for which the topics are to be found.
+        n_words : int, optional
+            The number of words to be displayed for each topic. The default is 20.
+
+        Returns
+        -------
+        self
+            Returns self.
+        '''
 
         # checking if clusters are already created
         cluster_col = self._get_cluster_col(column)
 
+        def lemmatize_text(text):
+            lemmatizer = WordNetLemmatizer()
+            stop_words = set(stopwords.words('english'))
+
+            # Lowercase
+            text = text.lower()
+
+            # Remove punctuation and numbers
+            text = re.sub(r'[^\w\s]', '', text)
+            text = re.sub(r'\d+', '', text)
+            
+            # Tokenize and lemmatize
+            tokens = word_tokenize(text)
+            tokens = [lemmatizer.lemmatize(token) for token in tokens if token not in stop_words]
+
+            return tokens
+
         # create c-tf-idf helper function
-        def c_tf_idf(documents, m, ngram_range=(1, 1)):
-            count = CountVectorizer(ngram_range=ngram_range, stop_words="english").fit(documents)
+        def c_tf_idf(documents, m, ngram_range=(1, 2)):
+            count = CountVectorizer(ngram_range=ngram_range, stop_words="english", tokenizer=lemmatize_text).fit(documents)
             t = count.transform(documents).toarray()
             w = t.sum(axis=1)
             tf = np.divide(t.T, w)
@@ -426,7 +427,7 @@ class WordWizard:
             tf_idf_transposed = tf_idf.T
             indices = tf_idf_transposed.argsort()[:, -n:]
             top_n_words = {label: [(words[j], tf_idf_transposed[i][j]) for j in indices[i]][::-1] for i, label in enumerate(labels)}
-            return top_n_words
+            return pd.DataFrame(list(top_n_words.items()), columns=[cluster_col, 'cluster_topics'])
 
         # create docs_df with the column and the cluster
         docs_df = self.df[[column, cluster_col]].copy()
@@ -436,8 +437,14 @@ class WordWizard:
 
         # get tf-idf and count vectorizer
         tf_idf, count = c_tf_idf(docs_per_topic[column].values, len(self.df))
+
+        # get top n words per topic
+        top_n_words_df = extract_top_n_words_per_topic(tf_idf, count, docs_per_topic, n_words)
+
+        # merge top n words with self.df
+        self.df = self.df.merge(top_n_words_df, on=cluster_col, how='left')
         
-        return extract_top_n_words_per_topic(tf_idf, count, docs_per_topic)
+        return self
     
     # Helper functions
     def _get_embed_col(self, column):
@@ -452,7 +459,6 @@ class WordWizard:
         else:
             raise ValueError(f"Column {column} does not exist in dataframe. Please create embeddings first.")
         
-
     def _get_cluster_col(self, column):
         embed_column = self._get_embed_col(column)
 
@@ -461,3 +467,54 @@ class WordWizard:
         
         else:
             raise ValueError(f"Column {column} does not exist in dataframe. Please create clusters first.")
+
+    def _kmeans_clustering(self, df, embed_column, k_upperbound, method, k):
+        if (k is None) and (method == 'silhouette'):
+            sil = []
+            K = range(2, k_upperbound)
+
+            # Calculate Silhouette Score for each K
+            for k in K:
+                kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
+                labels = kmeans.labels_
+                sil.append(silhouette_score(df[embed_column].tolist(), labels))
+
+            # Find optimal K
+            k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
+
+        elif (k is None) and (method == 'elbow'):
+            # ssd = sum of squared distances
+            ssd = []
+            K = range(2, k_upperbound)
+
+            # Calculate sum of squared distances for each K
+            for k in K:
+                model = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
+                ssd.append(model.inertia_)
+
+            # Plot sum of squared distances
+            plt.plot(K, ssd, 'bx-')
+            plt.xlabel('k')
+            plt.ylabel('Sum of squared distances')
+            plt.title('Elbow Method For Optimal k')
+            plt.show()
+
+            # Ask user for optimal K
+            try:
+                k = int(input("Enter the optimal number of clusters (based on the plot): "))
+            except ValueError:
+                raise ValueError("Invalid input. Please enter an integer.")
+        else:
+            raise ValueError("Invalid method. Choose either 'silhouette' or 'elbow'.")
+
+        return KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
+
+    def _find_medoids(self, df, embed_column, clust_col, model, n_med):
+        centroids = model.cluster_centers_
+        df[clust_col + self.MEDOID_SUFFIX] = False
+
+        for i, centroid in enumerate(centroids):
+            points_in_cluster = df[df[clust_col] == i][embed_column]
+            distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
+            closest_indices = distances.nsmallest(n_med).index
+            df.loc[closest_indices, clust_col + self.MEDOID_SUFFIX] = True
