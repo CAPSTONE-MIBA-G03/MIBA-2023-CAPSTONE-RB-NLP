@@ -127,26 +127,56 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, algorithm='kmeans', method='silhouette', k=None, n_med=2):
+    def cluster_embeddings(self, column, algorithm='kmeans', method='silhouette', k=None, k_max=15, k_min=5, n_med=2):
+        """
+        Clusters the word embeddings of the specified column.
+
+        Parameters
+        ----------
+        column : str
+            The column to cluster.
+        algorithm : str, optional
+            The clustering algorithm to use. Defaults to 'kmeans'.
+        method : str, optional
+            The method to use for determining the optimal number of clusters. Defaults to 'silhouette'.
+        k : int, optional
+            The number of clusters to use. If specified, the algorithm parameter will be ignored. Defaults to None.
+        k_max : int, optional
+            The upperbound for the number of clusters to try. Defaults to 15.
+        k_min : int, optional
+            The minimum number of clusters to try. Defaults to 5.
+        n_med : int, optional
+            The number of medoids to find. Defaults to 2.
+
+        Returns
+        -------
+        self : WordWizard
+            The WordWizard object.
+
+        """
+
         df = self.df
         embed_column = self._get_embed_col(column)
         clust_column = embed_column + self.CLUSTER_SUFFIX
 
+        # Cluster
         if algorithm == 'kmeans':
-            model = self._kmeans_clustering(df, embed_column, k_upperbound, method, k)
+            model = self._kmeans_clustering(df, embed_column, k_max, method, k, k_min)
             df[clust_column] = model.labels_
             self._find_medoids(df, embed_column, clust_column, model, n_med)
-        
+
         elif algorithm == 'hdbscan':
             reduced_column = column + self.REDDIM_SUFFIX + self.EMB_SUFFIX
+            
             if reduced_column not in df.columns:
                 self.reduce_demensionality(column)
-            model = HDBSCAN(min_cluster_size=5).fit(df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX].tolist())
+            
+            model = HDBSCAN(min_cluster_size=k_min).fit(df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX].tolist())
             df[clust_column] = model.labels_
 
         else:
             raise ValueError('Invalid algorithm. Choose either "kmeans" or "hdbscan".')
-
+        
         return self
 
     def summarize_medoids(self, column: str, lean=True, device=None):
@@ -378,7 +408,7 @@ class WordWizard:
             tf_idf_transposed = tf_idf.T
             indices = tf_idf_transposed.argsort()[:, -n:]
             top_n_words = {label: [(words[j], tf_idf_transposed[i][j]) for j in indices[i]][::-1] for i, label in enumerate(labels)}
-            return pd.DataFrame(list(top_n_words.items()), columns=[cluster_col, 'cluster_topics'])
+            return pd.DataFrame(list(top_n_words.items()), columns=[cluster_col, 'topics'])
 
         # create docs_df with the column and the cluster
         docs_df = self.df[[column, cluster_col]].copy()
@@ -391,6 +421,10 @@ class WordWizard:
 
         # get top n words per topic
         top_n_words_df = extract_top_n_words_per_topic(tf_idf, count, docs_per_topic, n_words)
+
+        # remove cluster_topcs column if already present
+        if 'topics' in self.df.columns:
+            self.df = self.df.drop('topics', axis=1)
 
         # merge top n words with self.df
         self.df = self.df.merge(top_n_words_df, on=cluster_col, how='left')
@@ -419,7 +453,7 @@ class WordWizard:
         else:
             raise ValueError(f"Column {column} does not exist in dataframe. Please create clusters first.")
 
-    def _kmeans_clustering(self, df, embed_column, k_upperbound, method, k):
+    def _kmeans_clustering(self, df, embed_column, k_upperbound, method, k, min_k):
         if (k is None) and (method == 'silhouette'):
             sil = []
             K = range(2, k_upperbound)
@@ -457,6 +491,9 @@ class WordWizard:
                 raise ValueError("Invalid input. Please enter an integer.")
         else:
             raise ValueError("Invalid method. Choose either 'silhouette' or 'elbow'.")
+
+        # k has to be greater or equal to 5
+        k = max(k, min_k)
 
         return KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
 
