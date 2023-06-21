@@ -149,7 +149,7 @@ class WordWizard:
 
         return self
 
-    def cluster_embeddings(self, column, k_upperbound=15, extra_clusters=1, method='silhouette', k=None, n_med=2):
+    def cluster_embeddings(self, column, k_upperbound=15, method='silhouette', n_med=2):
         df = self.df
         embed_column = self._get_embed_col(column)
 
@@ -157,7 +157,7 @@ class WordWizard:
         kmeans = {}
         K = range(2, k_upperbound)
         
-        if (k == None) & (method == 'silhouette'):
+        if method == 'silhouette':
             sil = []
 
             # Calculate Silhouette Score for each K
@@ -169,8 +169,7 @@ class WordWizard:
             # Find optimal K
             k = sil.index(max(sil)) + 2  # +2 because index starts from 0 and k starts from 2
         
-        elif (k == None) & (method == 'elbow'):
-            print('hi')
+        elif method == 'elbow':
             # ssd = sum of squared distances
             ssd = []
 
@@ -191,6 +190,9 @@ class WordWizard:
                 k = int(input("Enter the optimal number of clusters (based on the plot): "))
             except ValueError:
                 raise ValueError("Invalid input. Please enter an integer.")
+
+        else:
+            raise ValueError("Invalid method. Please choose either 'silhouette' or 'elbow'.")
 
         kmeans = KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
         clust_col = embed_column + self.CLUSTER_SUFFIX 
