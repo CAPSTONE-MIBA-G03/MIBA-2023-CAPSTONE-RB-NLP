@@ -21,13 +21,12 @@ from tqdm.auto import tqdm
 
 
 tqdm.pandas()
-import transformers
 from transformers import (AutoModelForSeq2SeqLM,
                           AutoModelForSequenceClassification,
                           AutoModelForTokenClassification, AutoTokenizer,
-                          BartModel, BartTokenizer, BertModel, BertTokenizer,
+                          BertModel, BertTokenizer, pipeline,
                           DistilBertForSequenceClassification,
-                          DistilBertTokenizer, pipeline)
+                          DistilBertTokenizer)
 
 
 class WordWizard:
@@ -84,10 +83,6 @@ class WordWizard:
             self.df = self.df.drop_duplicates()
             self.df = self.df.reset_index(drop=True) # could make problems somewhere
             self.interest = interest
-        
-        # delete
-        elif interest == 'skip':
-            pass
 
         else:
             self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
@@ -120,28 +115,6 @@ class WordWizard:
 
             self.df.at[i, new_column_name] = embedding
         
-        return self
-    
-        unique_indices = self.df[~self.df[column].duplicated()].index.tolist()
-        for i, pos in enumerate(tqdm(unique_indices, desc=f"Creating word embeddings for column {column}")):
-
-            text = self.df.at[pos, column]
-
-            encoded_input = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
-            encoded_input.to(device)
-
-            with torch.inference_mode():
-                outputs = model(**encoded_input)
-                last_hidden_state = outputs.last_hidden_state
-                embedding = torch.mean(last_hidden_state, dim=1).squeeze(0).cpu().numpy()
-            
-            if i + 1 == len(unique_indices):
-                self.df.loc[pos:, new_column_name] = self.df.loc[pos:].apply(lambda _: embedding.tolist(), axis=1)
-
-            else:
-                next_index = unique_indices[i + 1]
-                self.df.loc[pos:next_index - 1, new_column_name] = self.df.loc[pos:next_index - 1].apply(lambda _: embedding.tolist(), axis=1)
-
         return self
 
     def create_sentence_embeddings(self, column="sentences" ,device=None):
@@ -177,7 +150,9 @@ class WordWizard:
         return self
 
     def summarize_medoids(self, column: str, lean=True, device=None):
-
+        
+        cluster_col = self._get_cluster_col(column)
+        
         if not device:
             device = self.device
 
@@ -189,20 +164,14 @@ class WordWizard:
             model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
 
         model.to(device)
-
-        new_column_name = column + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
         
-        if column == 'sentences':
-            medoid = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
-            new_column_name = column + self.SENT_EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
-        else:
-            medoid = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX
-            new_column_name = column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
+        medoid = cluster_col + self.MEDOID_SUFFIX
+        new_column_name = cluster_col + self.MEDOID_SUFFIX + self.SUMMARY_SUFFIX
 
         self.df[new_column_name] = np.nan
 
         medoid_indices = self.df.loc[self.df[medoid] == True].index.tolist()
-        for i, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
+        for _, pos in enumerate(tqdm(medoid_indices, desc=f"Creating summaries for medoids of column {column}")):
 
             text = self.df.at[pos, column]
 
@@ -311,12 +280,18 @@ class WordWizard:
             orgs = [str(ent) for ent in doc.ents if ent.label_ == 'ORG']
             return orgs
 
+
+
+        if column + self.EMB_SUFFIX in self.df.columns:
+            embed = self.EMB_SUFFIX
+        elif column + self.SENT_EMB_SUFFIX in self.df.columns:
+            embed = self.SENT_EMB_SUFFIX
         
-        self.df[column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = None
-        unique_clusters = self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX].unique()
+        self.df[column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = None
+        unique_clusters = self.df[column + embed + self.CLUSTER_SUFFIX].unique()
         # using tqdm on for i in unique_clusters:
         for i in tqdm(unique_clusters, desc=f"Extracting organizations for column {column}"):
-            sub = self.df[self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i]
+            sub = self.df[self.df[column + embed + self.CLUSTER_SUFFIX] == i]
             
             # Adding a column with organizations for each title, body and description
             for col in ['title', 'description', column]:
@@ -327,34 +302,10 @@ class WordWizard:
             all_orgs = [org for org in all_orgs if type(org) != float]
             orgs = Counter(all_orgs)
             orgs_list = [org[0] for org in orgs.most_common(top_n)]
-            self.df.loc[(self.df[column + self.EMB_SUFFIX + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + self.EMB_SUFFIX + self.NER_SUFFIX] = str(orgs_list)
+            self.df.loc[(self.df[column + embed + self.CLUSTER_SUFFIX] == i), column + self.CLUSTER_SUFFIX + embed + self.NER_SUFFIX] = str(orgs_list)
 
         return self
     
-    
-        if not device:
-            device = self.device
-        
-        if lean:
-            tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
-            model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
-        else:
-            tokenizer = AutoTokenizer.from_pretrained("dslim/bert-large-NER")
-            model = AutoModelForTokenClassification.from_pretrained("dslim/bert-large-NER")
-        for column in tqdm(columns, desc=f"Creating embeddings for column: {columns}", leave=True):
-            new_column_name = column + self.NER_SUFFIX
-            self.df[new_column_name] = None
-
-            texts = self.df[column].tolist()
-            for i, text in enumerate(tqdm(texts, leave=False)):
-                if (i != 0) and (self.df.at[i, "para_index"] == self.df.at[i - 1, "para_index"]) and (column != "paragraph"):
-                    self.df.at[i, new_column_name] = self.df.at[i - 1, new_column_name]
-                    continue
-
-                pipe = pipeline("ner", model=model, tokenizer=tokenizer, device=self.device)
-                self.df.at[i, new_column_name] = pipe(text)
-
-        return self
 
     def reduce_demensionality(self, column, n_components=2, n_neighbors=15, min_dist=0.0, metric='cosine'):
         # check if either word_embeddings or sentence embeddings are present else raise error
