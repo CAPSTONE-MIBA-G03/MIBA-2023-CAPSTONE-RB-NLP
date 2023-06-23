@@ -172,7 +172,6 @@ class WordWizard:
         if algorithm == 'kmeans':
             model = self._kmeans_clustering(df, embed_column, k_max, method, k, k_min)
             df[clust_column] = model.labels_
-            self._find_medoids(df, embed_column, clust_column, model, n_med)
 
         elif algorithm == 'hdbscan':
             reduced_column = self.interest + self.REDDIM_SUFFIX + self.EMB_SUFFIX
@@ -185,6 +184,9 @@ class WordWizard:
 
         else:
             raise ValueError('Invalid algorithm. Choose either "kmeans" or "hdbscan".')
+
+        # Find medoids
+        self._find_medoids(model, n_med, algorithm)
         
         return self
 
@@ -355,9 +357,9 @@ class WordWizard:
 
         return self
     
-    def reduce_demensionality(self, column, n_components=2, n_neighbors=15, min_dist=0.0, metric='cosine'):
+    def reduce_demensionality(self, n_components=2, n_neighbors=15, min_dist=0.0, metric='cosine'):
         # check if either word_embeddings or sentence embeddings are present else raise error
-        embed_column = self._get_embed_col(column)
+        embed_column = self._get_embed_col(self.interest)
         
         # getting the embeddings for the column
         embeddings = self.df[embed_column].tolist()
@@ -366,7 +368,7 @@ class WordWizard:
         umap_data = UMAP(n_neighbors=n_neighbors, n_components=n_components, min_dist=min_dist, metric=metric).fit_transform(embeddings)
 
         # adding the umap embeddings to the dataframe
-        self.df[column + self.REDDIM_SUFFIX + self.EMB_SUFFIX] = umap_data.tolist()
+        self.df[self.interest + self.REDDIM_SUFFIX + self.EMB_SUFFIX] = umap_data.tolist()
 
         return self
 
@@ -516,12 +518,31 @@ class WordWizard:
 
         return KMeans(n_clusters=k, n_init='auto').fit(df[embed_column].tolist())
 
-    def _find_medoids(self, df, embed_column, clust_col, model, n_med):
-        centroids = model.cluster_centers_
-        df[clust_col + self.MEDOID_SUFFIX] = False
+    def _find_medoids(self, model, n_med, cluster_method):
+        df = self.df
+        clust_column = self._get_cluster_col(self.interest)
+        embed_column = self._get_embed_col(self.interest)
 
-        for i, centroid in enumerate(centroids):
-            points_in_cluster = df[df[clust_col] == i][embed_column]
-            distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
-            closest_indices = distances.nsmallest(n_med).index
-            df.loc[closest_indices, clust_col + self.MEDOID_SUFFIX] = True
+        # create column to indicate medoids
+        df[clust_column + self.MEDOID_SUFFIX] = False
+
+        # find medoids according to cluster method
+        if cluster_method == 'kmeans':
+            centroids = model.cluster_centers_
+
+            for i, centroid in enumerate(centroids):
+                points_in_cluster = df[df[clust_column] == i][embed_column]
+                distances = points_in_cluster.apply(lambda x: np.linalg.norm(np.array(x) - centroid))
+                closest_indices = distances.nsmallest(n_med).index
+                df.loc[closest_indices, clust_column + self.MEDOID_SUFFIX] = True
+
+        elif cluster_method == 'hdbscan':
+            clusters = df[clust_column].unique()
+            for cluster in clusters:
+                if cluster == -1:  # HDBSCAN labels noise points with -1
+                    continue
+                
+                points_in_cluster = df[df[clust_column] == cluster][embed_column]
+                avg_distances = points_in_cluster.apply(lambda x: points_in_cluster.apply(lambda y: np.linalg.norm(np.array(x) - np.array(y))).mean())
+                closest_indices = avg_distances.nsmallest(n_med).index
+                df.loc[closest_indices, clust_column + self.MEDOID_SUFFIX] = True
