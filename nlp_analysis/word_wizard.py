@@ -114,23 +114,6 @@ class WordWizard:
 
     def __init__(self, df, device=None, interest="paragraph") -> None:
 
-        if interest == "body":
-            self.df = self.df.drop(columns=["article_index", "paragraph"])
-            self.df = self.df.drop_duplicates()
-            self.df = self.df.reset_index(drop=True)
-            self.interest = interest
-
-        elif interest == "paragraph":
-            self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
-            self.interest = interest
-
-        else:
-            raise ValueError("Invalid interest. Please choose either 'paragraph' or 'body'.")
-
-        # Setup nltk
-        nltk.download("punkt", quiet=True)
-        nltk.download("wordnet", quiet=True)
-
         self.df = df.copy().reset_index(drop=True)
 
         # Setup device agnostic code (Chooses NVIDIA (most optimized) or Metal backend (still better than cpu) if available, otherwise defaults to CPU)
@@ -145,6 +128,24 @@ class WordWizard:
 
         else:
             self.device = "cpu"
+
+
+        if interest == "body":
+            self.df = self.df.drop(columns=["article_index", "paragraph"])
+            self.df = self.df.drop_duplicates()
+            self.df = self.df.reset_index(drop=True)
+            self.interest = interest
+
+        elif interest == "paragraph":
+            self.df["sentences"] = self.df["paragraph"].apply(lambda x: sent_tokenize(x))
+            self.interest = interest
+
+        else:
+            raise ValueError("Invalid interest. Please choose either 'paragraph' or 'body'.")
+        
+        # Setup nltk
+        nltk.download("punkt", quiet=True)
+        nltk.download("wordnet", quiet=True)
 
     def create_word_embeddings(self, lean=True, device=None):
         """
@@ -454,7 +455,7 @@ class WordWizard:
         >>> wizard.entity_recognition()
         >>> wizard.df.head()
         """
-
+        
         nlp = spacy.load("en_core_web_lg")
 
         # adding a pattern that will not classify quantum (capital or lower), AI, Company, quantum computing as organizations
@@ -510,7 +511,7 @@ class WordWizard:
 
         return self
 
-    def reduce_demensionality(self, column, n_components=2, n_neighbors=15, min_dist=0.0, metric="cosine"):
+    def reduce_demensionality(self, n_components=2, n_neighbors=15, min_dist=0.0, metric="cosine"):
         """
         Reduce the dimensionality of the embeddings using UMAP.
 
@@ -545,7 +546,7 @@ class WordWizard:
         """
 
         # check if either word_embeddings or sentence embeddings are present else raise error
-        embed_column = self._get_embed_col(column)
+        embed_column = self._get_embed_col(self.interest)
 
         # getting the embeddings for the column
         embeddings = self.df[embed_column].tolist()

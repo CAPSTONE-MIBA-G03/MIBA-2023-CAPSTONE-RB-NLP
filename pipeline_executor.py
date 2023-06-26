@@ -71,7 +71,7 @@ class PipelineExecutor:
     # main methods
     def execute(self, query, max_articles=None, overwrite=False):
         """
-        Executes ETL pipeline for a given query and return the clean content as a dataframe.
+        Executes ETL pipeline for a given query and returns the clean content as a dataframe.
 
         Parameters
         ----------
