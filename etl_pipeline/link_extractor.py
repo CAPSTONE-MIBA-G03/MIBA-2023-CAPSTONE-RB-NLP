@@ -87,6 +87,11 @@ class Google(SearchEngines):
     country : str, default="us"
         Specify a country to be included in the Google search. Defaults to "us".
 
+    Methods
+    -------
+    get_links(max_articles=None)
+        Extracts links from specified search engine class.
+
     Examples
     --------
     >>> from etl_pipeline.link_extractor import Google
@@ -95,6 +100,13 @@ class Google(SearchEngines):
     References
     -----
     Inspired by and adapted from https://www.youtube.com/watch?v=Ikf6Xdox0Go
+
+    IMPORTANT!
+    -----
+
+    The user agent for Google might have to be hardcoded as of now depending on the OS you are using.
+    Scraping Google is challenging. Without a user agent, Google will block your request. Using a fake user agent has also not been successful for now.
+    To find your user agent, google "What is my user agent" and copy the string that is returned.
     """
 
     ROOT = "https://www.google.com/"
@@ -213,6 +225,7 @@ class Google(SearchEngines):
 class Bing(SearchEngines):
     """
     A Class aimed at extracting relevant news article links from Bing.
+    Circumvents need for headless browser by making direct requests to Bing's "infinite scroll" search results.
 
     Parameters
     ----------
@@ -230,6 +243,11 @@ class Bing(SearchEngines):
 
     country : {}, default="us"
         Specify a country to be included in the Bing search. Defaults to "us".
+
+    Methods
+    -------
+    get_links(max_articles=None)
+        Extracts links from specified search engine class.
 
     Examples
     --------
@@ -357,6 +375,11 @@ class Yahoo(SearchEngines):
 
     country : {}, default="us"
         Specify a country to be included in the Yahoo search. Defaults to "us".
+    
+    Methods
+    -------
+    get_links(max_articles=None)
+        Extracts links from specified search engine class.
 
     Examples
     --------
@@ -535,12 +558,3 @@ def get_all_links(
     unique_results = list({v["se_link"]: v for v in all_results}.values())
     LOGGER.info(f"Found {len(unique_results)} unique articles out of {len(all_results)} total")
     return unique_results
-
-
-### TODO ###
-
-# - Make request session more robust by adding cookies, headers etc. Also, there is a way to make google think
-#   we come from google.com (so we are not the whole time making direct requests to super specific urls) - not really solved, but a bit (maybe)
-# - Google only takes actual actual UA. Fake ones not working. Work in Bing tho.
-#   part of url (we store this in a variable called "num_results"). Also, for some reason currently doing multiple requests in the
-#   same session not working (thats why we have session context manager inside recursion)

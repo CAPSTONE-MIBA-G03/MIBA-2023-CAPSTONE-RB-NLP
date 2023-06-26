@@ -1,5 +1,5 @@
 # MIBA-2023-CAPSTONE-RB-NLP (Esade Project)
-This project from ESADE MIBA students of team G03 in collaboration with Roland Berger Paris aims to develop a data ingestion pipeline for news article data and test different NLP approaches on the extracted data to analyze topics and trends linked to a particular brand or company name.
+This project from ESADE MIBA students of team G03 in collaboration with Roland Berger Paris aims to develop a data ingestion pipeline for news article data and test different NLP approaches on the extracted data to analyze topics and trends linked to a particular news topic.
 
 ETL Pipeline Components:
 - Link Extractor
@@ -101,3 +101,8 @@ analyzed_df = wizard.df
 ## Conclusion
 
 With `PipelineExecutor` and `WordWizard` modules, you can build a comprehensive pipeline to perform complex NLP tasks. These modules offer an easy-to-use and efficient way to extract, clean, analyze, and visualize data from the web.
+
+
+TODO/ Needs Fix
+- User-Agent: You might need to hard-code this in the Google Class as of now to match your OS (source: link_extractor.py)
+- Entity recognition patterns are currently still hard-coded (source: word_wizard.py)
