@@ -89,11 +89,15 @@ Each of these methods updates the DataFrame associated with the `WordWizard` obj
 6. **`reduce_demensionality`:** It reduces the dimensionality of the data for better visualization and understanding.
 7. **`topic_modelling`:** It identifies the main topics that emerge from the text content.
 
+## Analyzing the DataFrame Within WordWizard
+
+After executing the chained processing and analysis operations on the WordWizard object, you can access the updated DataFrame for further analysis. This DataFrame incorporates the results of all the NLP tasks performed by the WordWizard.
+
+```python
+# Access the DataFrame
+analyzed_df = wizard.df
+```
+
 ## Conclusion
 
 With `PipelineExecutor` and `WordWizard` modules, you can build a comprehensive pipeline to perform complex NLP tasks. These modules offer an easy-to-use and efficient way to extract, clean, analyze, and visualize data from the web.
-```
-
-This markdown text can be directly copied into a `README.md` file. Please note that the code blocks might not be rendered as intended in all markdown editors, particularly the ones that are nested inside the main markdown text.
-
- You may need to adjust the formatting slightly to suit your specific editor.
