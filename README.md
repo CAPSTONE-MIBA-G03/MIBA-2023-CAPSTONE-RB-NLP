@@ -103,6 +103,6 @@ analyzed_df = wizard.df
 With `PipelineExecutor` and `WordWizard` modules, you can build a comprehensive pipeline to perform complex NLP tasks. These modules offer an easy-to-use and efficient way to extract, clean, analyze, and visualize data from the web.
 
 
-TODO/ Needs Fix
+### TODO/ Needs Fix
 - User-Agent: You might need to hard-code this in the Google Class as of now to match your OS (source: link_extractor.py)
 - Entity recognition patterns are currently still hard-coded (source: word_wizard.py)
