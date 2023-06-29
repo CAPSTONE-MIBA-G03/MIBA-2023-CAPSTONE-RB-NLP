@@ -88,12 +88,13 @@ wizard.create_word_embeddings() \
 Each of these methods updates the DataFrame associated with the `WordWizard` object and performs a specific operation:
 
 1. **`create_word_embeddings`:** This method creates embeddings (dense vector representations) for the words in the content.
-2. **`cluster_embeddings`:** This method groups the embeddings into clusters using a specified algorithm.
-3. **`summarize_medoids`:** It generates a summary of the clusters by identifying the medoids (the most representative points of a cluster).
-4. **`find_sentiment`:** This method computes the sentiment score for the text content.
-5. **`entitiy_recognition`:** This method identifies and extracts the entities present in the text.
-6. **`reduce_demensionality`:** It reduces the dimensionality of the data for better visualization and understanding.
-7. **`topic_modelling`:** It identifies the main topics that emerge from the text content.
+2. **`create_sentence_embeddings`:** This method creates embeddings (dense vector representations) for entire sentences in the news content.
+3. **`cluster_embeddings`:** This method groups the embeddings into clusters using a specified algorithm.
+4. **`summarize_medoids`:** It generates a summary of the clusters by identifying the medoids (the most representative points of a cluster).
+5. **`find_sentiment`:** This method computes the sentiment score for the text content.
+6. **`entitiy_recognition`:** This method identifies and extracts the entities present in the text.
+7. **`reduce_demensionality`:** It reduces the dimensionality of the data for better visualization and understanding.
+8. **`topic_modelling`:** It identifies the main topics that emerge from the text content.
 
 ## Analyzing the DataFrame Within WordWizard
 
@@ -115,3 +116,4 @@ With `PipelineExecutor` and `WordWizard` modules, you can build a comprehensive 
 - Implement testing
 - Fix multi-threading warning when calling `get_content()` (source: `content_extractor.py`)
 - Optimize `find_sentiment()` method - no need for duplicate masking before loop (source: `word_wizard.py`)
+- Column names can be shrunk/simplified since we are specifying interest when initializing wizard (source: `word_wizard.py`)
