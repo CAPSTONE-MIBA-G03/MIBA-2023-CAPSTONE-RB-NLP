@@ -17,7 +17,7 @@ The `PipelineExecutor` and `WordWizard` are robust modules built to extract, cle
 
 ## Installation
 
-To begin, make sure these modules are correctly installed and imported in your Python environment:
+To begin, make sure you are using Python3 (ideally Python 3.10.11 to avoid any conflicts). Continue by cloning this git repo and installing the necessary dependencies in your Python environment:
 
 ```bash
 $ python -m venv venv
