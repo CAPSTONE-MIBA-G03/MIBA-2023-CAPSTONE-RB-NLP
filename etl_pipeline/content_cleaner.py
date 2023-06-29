@@ -125,4 +125,7 @@ def clean_content(df):
     for col in ["title", "body", "paragraph", "description"]:
         df_clean[col] = df_clean[col].replace(empty_string_pattern, np.nan, regex=True)
 
-    return df_clean[["article_index", "engine", "link", "source", "title", "description", "body", "paragraph"]].dropna(subset=["title", "description", "body", "paragraph"])
+    df_clean = df_clean[["article_index", "engine", "link", "source", "title", "description", "body", "paragraph"]]
+    df_clean = df_clean.dropna(subset=["title", "description", "body", "paragraph"]).reset_index(drop=True)
+
+    return df_clean

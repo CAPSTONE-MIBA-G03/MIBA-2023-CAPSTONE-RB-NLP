@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 
 import pandas as pd
 
@@ -38,7 +39,6 @@ class PipelineExecutor:
     >>> from pipeline_executor import PipelineExecutor
     >>> pipe = PipelineExecutor()
     >>> pipe.execute(query="Roland Berger", max_articles=50)
-
     """
 
     def __init__(self, main_dir="data", raw_dir="raw", clean_dir="clean") -> None:
@@ -69,7 +69,7 @@ class PipelineExecutor:
             os.mkdir(self.clean_dir)
 
     # main methods
-    def execute(self, query, max_articles=None, overwrite=False):
+    def execute(self, query, max_articles=None, overwrite=False) -> pd.DataFrame:
         """
         Executes ETL pipeline for a given query and returns the clean content as a dataframe.
 
@@ -91,7 +91,8 @@ class PipelineExecutor:
         """
 
         # filenames
-        build_filename = lambda dir: f'{dir}/{query.strip().replace(" ", "")}_{max_articles}.csv'
+        raw_query = re.sub(r'[\"\']', '', query.strip().replace(" ", ""))
+        build_filename = lambda dir: f"{dir}/{raw_query}_{max_articles}.csv"
         raw_filename = build_filename(self.raw_dir)
         clean_filename = build_filename(self.clean_dir)
 
