@@ -104,7 +104,8 @@ With `PipelineExecutor` and `WordWizard` modules, you can build a comprehensive 
 
 
 ### TODO/ Needs Fix
-- User-Agent: You might need to hard-code this in the Google Class as of now to match your OS (source: link_extractor.py)
-- Entity recognition patterns are currently still hard-coded (source: word_wizard.py)
+- User-Agent: You might need to hard-code this in the `Google()` Class as of now to match your OS (source: `link_extractor.py`)
+- Exclusion patterns in  `entity_recognition()` are currently still hard-coded - should be optional input to method (source: `word_wizard.py`)
 - Implement testing
 - Fix multi-threading warning when calling `get_content()` (source: `content_extractor.py`)
+- Optimize `find_sentiment()` method - no need for duplicate masking before loop (source: `word_wizard.py`)
