@@ -19,6 +19,12 @@ The `PipelineExecutor` and `WordWizard` are robust modules built to extract, cle
 
 To begin, make sure these modules are correctly installed and imported in your Python environment:
 
+```bash
+$ python -m venv venv
+$ source ./venv/bin/activate
+$ pip install -r requirements.txt
+```
+
 ```python
 from etl_pipeline import PipelineExecutor
 from nlp_analysis import WordWizard
