@@ -92,13 +92,13 @@ class PipelineExecutor:
 
         # filenames
         raw_query = re.sub(r'[\"\']', '', query.strip().replace(" ", ""))
-        build_filename = lambda dir: f"{dir}/{raw_query}_{max_articles}.csv"
+        build_filename = lambda dir: f"{dir}/{raw_query}_{max_articles}.parquet"
         raw_filename = build_filename(self.raw_dir)
         clean_filename = build_filename(self.clean_dir)
 
         # return if file with [query] already exists
         if os.path.exists(clean_filename) and not overwrite:
-            return pd.read_csv(clean_filename)
+            return pd.read_parquet(clean_filename)
 
         # 1. get links
         links = get_all_links(query=query, max_articles=max_articles)
@@ -114,13 +114,14 @@ class PipelineExecutor:
         dirty_content_df = pd.DataFrame(dirty_content_df)
         dirty_content_df = pd.merge(links_df, dirty_content_df, left_on="se_link", right_on="bs_link")
         dirty_content_df = dirty_content_df.explode("bs_paragraph", ignore_index=False)
+        dirty_content_df = dirty_content_df.drop(columns=["n3k_published"])
         dirty_content_df = dirty_content_df.reset_index(names="article_index")
 
-        dirty_content_df.to_csv(raw_filename, index=False)
+        dirty_content_df.to_parquet(raw_filename, index=False)
 
         # 3. clean content (and store)
         clean_content_df = clean_content(dirty_content_df)
-        clean_content_df.to_csv(clean_filename, index=False)
+        clean_content_df.to_parquet(clean_filename, index=False)
 
         # return clean content
         return clean_content_df
