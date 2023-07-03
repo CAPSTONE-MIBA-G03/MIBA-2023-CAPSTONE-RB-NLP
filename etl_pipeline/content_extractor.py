@@ -150,7 +150,7 @@ def _process_article(url, n3k_article):
     return result
 
 
-def get_content(links: list) -> dict:
+def get_content(links: list) -> pd.DataFrame:
     """
     Retrieves article content from multiple URLs in parallel and returns a pandas DataFrame with the parsed information.
 
