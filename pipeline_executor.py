@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 
 import pandas as pd
 
@@ -38,7 +39,6 @@ class PipelineExecutor:
     >>> from pipeline_executor import PipelineExecutor
     >>> pipe = PipelineExecutor()
     >>> pipe.execute(query="Roland Berger", max_articles=50)
-
     """
 
     def __init__(self, main_dir="data", raw_dir="raw", clean_dir="clean") -> None:
@@ -69,7 +69,7 @@ class PipelineExecutor:
             os.mkdir(self.clean_dir)
 
     # main methods
-    def execute(self, query, max_articles=None, overwrite=False):
+    def execute(self, query, max_articles=None, overwrite=False) -> pd.DataFrame:
         """
         Executes ETL pipeline for a given query and returns the clean content as a dataframe.
 
@@ -91,13 +91,14 @@ class PipelineExecutor:
         """
 
         # filenames
-        build_filename = lambda dir: f'{dir}/{query.strip().replace(" ", "")}_{max_articles}.csv'
+        raw_query = re.sub(r'[\"\']', '', query.strip().replace(" ", ""))
+        build_filename = lambda dir: f"{dir}/{raw_query}_{max_articles}.parquet"
         raw_filename = build_filename(self.raw_dir)
         clean_filename = build_filename(self.clean_dir)
 
         # return if file with [query] already exists
         if os.path.exists(clean_filename) and not overwrite:
-            return pd.read_csv(clean_filename)
+            return pd.read_parquet(clean_filename)
 
         # 1. get links
         links = get_all_links(query=query, max_articles=max_articles)
@@ -113,13 +114,14 @@ class PipelineExecutor:
         dirty_content_df = pd.DataFrame(dirty_content_df)
         dirty_content_df = pd.merge(links_df, dirty_content_df, left_on="se_link", right_on="bs_link")
         dirty_content_df = dirty_content_df.explode("bs_paragraph", ignore_index=False)
+        dirty_content_df = dirty_content_df.drop(columns=["n3k_published"])
         dirty_content_df = dirty_content_df.reset_index(names="article_index")
 
-        dirty_content_df.to_csv(raw_filename, index=False)
+        dirty_content_df.to_parquet(raw_filename, index=False)
 
         # 3. clean content (and store)
         clean_content_df = clean_content(dirty_content_df)
-        clean_content_df.to_csv(clean_filename, index=False)
+        clean_content_df.to_parquet(clean_filename, index=False)
 
         # return clean content
         return clean_content_df

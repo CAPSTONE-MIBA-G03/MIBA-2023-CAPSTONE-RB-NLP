@@ -188,8 +188,7 @@ class WordWizard:
 
         new_column_name = self.interest + self.EMB_SUFFIX
         self.df[new_column_name] = None
-        for i, entry in enumerate(
-            tqdm(self.df[self.interest], desc=f"Creating word embeddings for {self.interest}")):
+        for i, entry in enumerate(tqdm(self.df[self.interest], desc=f"Creating word embeddings for {self.interest}")):
             encoded_input = tokenizer(entry, padding=True, truncation=True, return_tensors="pt")
             encoded_input.to(device)
 
@@ -400,7 +399,7 @@ class WordWizard:
 
         else:
             tokenizer = AutoTokenizer.from_pretrained("siebert/sentiment-roberta-large-english")
-            model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english")
+            model = AutoModelForSequenceClassification.from_pretrained("siebert/sentiment-roberta-large-english") # 2 classes: positive(1), negative(0)
 
         model.to(device)
         model.eval()
